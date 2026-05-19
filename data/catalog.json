@@ -1,0 +1,214 @@
+{
+  "categories": [
+    {
+      "id": "todos",
+      "title": "Todos",
+      "icon": "★",
+      "description": "Ofertas ativas"
+    },
+    {
+      "id": "combos",
+      "title": "Combos",
+      "icon": "%",
+      "description": "Pacotes prontos"
+    },
+    {
+      "id": "frango",
+      "title": "Frango",
+      "icon": "C",
+      "description": "Crocante BCK"
+    },
+    {
+      "id": "pizza",
+      "title": "Pizza",
+      "icon": "P",
+      "description": "Quente e recheada"
+    },
+    {
+      "id": "batata",
+      "title": "Batata recheada",
+      "icon": "B",
+      "description": "Cheddar e bacon"
+    },
+    {
+      "id": "porcoes-carne",
+      "title": "Porções de carne",
+      "icon": "K",
+      "description": "Para dividir"
+    },
+    {
+      "id": "bebidas",
+      "title": "Bebidas",
+      "icon": "G",
+      "description": "Geladas"
+    },
+    {
+      "id": "hamburguer",
+      "title": "Hambúrguer futuro",
+      "icon": "H",
+      "description": "Pronto para ativar"
+    }
+  ],
+  "products": [
+    {
+      "id": "combo-frango-pizza",
+      "active": true,
+      "featured": true,
+      "combo": true,
+      "categories": ["combos", "frango", "pizza"],
+      "title": "Frango Filé 500g + Pizza Pequena",
+      "description": "Frango crocante, pizza pequena e molho da casa para pedido de impacto.",
+      "image": "assets/images/combo-frango-pizza.webp",
+      "originalPrice": 68.9,
+      "promoPrice": 49.9,
+      "badge": "Combo da noite",
+      "badgeType": "hot",
+      "components": ["Frango Filé 500g", "Pizza Pequena", "Molho BCK"],
+      "sortScore": 100
+    },
+    {
+      "id": "combo-pizza-borda-refri",
+      "active": true,
+      "featured": false,
+      "combo": true,
+      "categories": ["combos", "pizza", "bebidas"],
+      "title": "Pizza + Borda + Refri",
+      "description": "Pizza quente com borda recheada e bebida gelada para fechar a noite.",
+      "image": "assets/images/combo-pizza-refri.webp",
+      "originalPrice": 64.9,
+      "promoPrice": 44.9,
+      "badge": "Relâmpago",
+      "badgeType": "flash",
+      "components": ["Pizza", "Borda recheada", "Refri"],
+      "sortScore": 96
+    },
+    {
+      "id": "combo-frango-batata-bebida",
+      "active": true,
+      "featured": false,
+      "combo": true,
+      "categories": ["combos", "frango", "batata", "bebidas"],
+      "title": "Frango + Batata + Bebida",
+      "description": "Crocância, cheddar e bebida em um combo direto para matar a fome.",
+      "image": "assets/images/combo-frango-batata-cerveja.webp",
+      "originalPrice": 78.9,
+      "promoPrice": 59.9,
+      "badge": "Mais pedido",
+      "badgeType": "best",
+      "components": ["Frango crocante", "Batata recheada", "Bebida"],
+      "sortScore": 94
+    },
+    {
+      "id": "combo-batata-refri",
+      "active": true,
+      "featured": false,
+      "combo": true,
+      "categories": ["combos", "batata", "bebidas"],
+      "title": "Batata Recheada + Refri",
+      "description": "Batata cremosa com cheddar e bacon, acompanhada de refri gelado.",
+      "image": "assets/images/combo-frango-batata-cerveja.webp",
+      "originalPrice": 42.8,
+      "promoPrice": 32.9,
+      "badge": "Oferta limitada",
+      "badgeType": "limited",
+      "components": ["Batata recheada", "Refri"],
+      "sortScore": 86
+    },
+    {
+      "id": "frango-file-500",
+      "active": true,
+      "featured": false,
+      "combo": false,
+      "categories": ["frango"],
+      "title": "Frango Filé 500g",
+      "description": "Porção de frango crocante, suculenta e pronta para dividir.",
+      "image": "assets/images/combo-frango-pizza.webp",
+      "originalPrice": 49.9,
+      "promoPrice": 39.9,
+      "badge": "Crocância",
+      "badgeType": "best",
+      "components": ["Frango Filé 500g"],
+      "sortScore": 82
+    },
+    {
+      "id": "pizza-pequena",
+      "active": true,
+      "featured": false,
+      "combo": false,
+      "categories": ["pizza"],
+      "title": "Pizza Pequena Promocional",
+      "description": "Pizza pequena com queijo derretido e recheio em clima de delivery premium.",
+      "image": "assets/images/combo-pizza-refri.webp",
+      "originalPrice": 39.9,
+      "promoPrice": 31.9,
+      "badge": "Relâmpago",
+      "badgeType": "flash",
+      "components": ["Pizza Pequena"],
+      "sortScore": 80
+    },
+    {
+      "id": "batata-cheddar-bacon",
+      "active": true,
+      "featured": false,
+      "combo": false,
+      "categories": ["batata"],
+      "title": "Batata Recheada Cheddar Bacon",
+      "description": "Batata recheada, cheddar brilhando e bacon crocante por cima.",
+      "image": "assets/images/combo-frango-batata-cerveja.webp",
+      "originalPrice": 34.9,
+      "promoPrice": 27.9,
+      "badge": "Oferta limitada",
+      "badgeType": "limited",
+      "components": ["Batata", "Cheddar", "Bacon"],
+      "sortScore": 76
+    },
+    {
+      "id": "porcao-carne-bck",
+      "active": true,
+      "featured": false,
+      "combo": false,
+      "categories": ["porcoes-carne"],
+      "title": "Porção de Carne BCK",
+      "description": "Porção para dividir com pegada de noite, molho e acompanhamento.",
+      "image": "assets/images/hero-bck-feast.webp",
+      "originalPrice": 69.9,
+      "promoPrice": 54.9,
+      "badge": "Mais pedido",
+      "badgeType": "best",
+      "components": ["Porção de carne", "Molho", "Acompanhamento"],
+      "sortScore": 72
+    },
+    {
+      "id": "bebida-refri",
+      "active": true,
+      "featured": false,
+      "combo": false,
+      "categories": ["bebidas"],
+      "title": "Refri Gelado",
+      "description": "Bebida gelada para completar qualquer combo sem pensar duas vezes.",
+      "image": "assets/images/combo-pizza-refri.webp",
+      "originalPrice": 14.9,
+      "promoPrice": 11.9,
+      "badge": "Add rápido",
+      "badgeType": "limited",
+      "components": ["Refri"],
+      "sortScore": 62
+    },
+    {
+      "id": "hamburguer-futuro",
+      "active": false,
+      "featured": false,
+      "combo": false,
+      "categories": ["hamburguer"],
+      "title": "Hambúrguer BCK Futuro",
+      "description": "Produto preparado para ativação quando a linha de hambúrguer entrar no delivery.",
+      "image": "assets/images/combo-frango-pizza.webp",
+      "originalPrice": 42.9,
+      "promoPrice": 34.9,
+      "badge": "Em breve",
+      "badgeType": "limited",
+      "components": ["Hambúrguer"],
+      "sortScore": 10
+    }
+  ]
+}

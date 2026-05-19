@@ -1,0 +1,139 @@
+backend:
+  name: git-gateway
+  branch: main
+
+media_folder: "assets/images"
+public_folder: "/assets/images"
+
+site_url: "/"
+display_url: "/"
+logo_url: "/assets/images/hero-bck-feast-mobile.webp"
+
+collections:
+  - name: "catalogo"
+    label: "Catalogo BCK"
+    files:
+      - name: "promocoes"
+        label: "Promocoes, combos e categorias"
+        file: "data/catalog.json"
+        format: "json"
+        editor:
+          preview: false
+        fields:
+          - label: "Categorias"
+            name: "categories"
+            widget: "list"
+            summary: "{{fields.title}}"
+            fields:
+              - label: "ID"
+                name: "id"
+                widget: "string"
+                hint: "Use valores como combos, frango, pizza, batata, porcoes-carne, bebidas ou hamburguer."
+              - label: "Nome da categoria"
+                name: "title"
+                widget: "string"
+              - label: "Icone curto"
+                name: "icon"
+                widget: "string"
+                required: false
+              - label: "Descricao curta"
+                name: "description"
+                widget: "string"
+                required: false
+
+          - label: "Promocoes e combos"
+            name: "products"
+            widget: "list"
+            summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+            fields:
+              - label: "ID unico"
+                name: "id"
+                widget: "string"
+                hint: "Nao use espacos. Exemplo: combo-frango-pizza."
+              - label: "Ativo no site"
+                name: "active"
+                widget: "boolean"
+                default: true
+              - label: "Destaque do dia"
+                name: "featured"
+                widget: "boolean"
+                default: false
+                required: false
+              - label: "E combo cruzado"
+                name: "combo"
+                widget: "boolean"
+                default: false
+                required: false
+              - label: "Nome da promocao/combo"
+                name: "title"
+                widget: "string"
+              - label: "Descricao"
+                name: "description"
+                widget: "text"
+              - label: "Imagem"
+                name: "image"
+                widget: "image"
+                choose_url: false
+                required: true
+              - label: "Categoria"
+                name: "categories"
+                widget: "select"
+                multiple: true
+                min: 1
+                options:
+                  - { label: "Combos", value: "combos" }
+                  - { label: "Frango", value: "frango" }
+                  - { label: "Pizza", value: "pizza" }
+                  - { label: "Batata recheada", value: "batata" }
+                  - { label: "Porcoes de carne", value: "porcoes-carne" }
+                  - { label: "Bebidas", value: "bebidas" }
+                  - { label: "Hamburguer futuro", value: "hamburguer" }
+              - label: "Preco promocional"
+                name: "promoPrice"
+                widget: "number"
+                value_type: "float"
+                min: 0
+                step: 0.01
+              - label: "Preco antigo"
+                name: "originalPrice"
+                widget: "number"
+                value_type: "float"
+                min: 0
+                step: 0.01
+                required: false
+                hint: "Opcional. Use somente quando quiser mostrar preco riscado e economia."
+              - label: "Badge"
+                name: "badge"
+                widget: "select"
+                options:
+                  - "Mais pedido"
+                  - "Relampago"
+                  - "Combo da noite"
+                  - "Oferta limitada"
+                  - "Crocancia"
+                  - "Add rapido"
+                  - "Em breve"
+              - label: "Cor do badge"
+                name: "badgeType"
+                widget: "select"
+                default: "best"
+                options:
+                  - { label: "Dourado", value: "best" }
+                  - { label: "Vermelho relampago", value: "flash" }
+                  - { label: "Verde limitado", value: "limited" }
+                  - { label: "Quente", value: "hot" }
+              - label: "Itens do combo/produto"
+                name: "components"
+                widget: "list"
+                required: false
+                field:
+                  label: "Item"
+                  name: "item"
+                  widget: "string"
+              - label: "Prioridade de exibicao"
+                name: "sortScore"
+                widget: "number"
+                value_type: "int"
+                default: 50
+                min: 0
+                max: 999
