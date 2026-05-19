@@ -292,6 +292,30 @@
       </article>
     </template>
 
+    <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+    <script>
+      (function () {
+        if (!window.netlifyIdentity) return;
+
+        var identityTokenPattern = /(?:confirmation|invite|recovery|email_change)_token=/;
+        var hasIdentityToken = identityTokenPattern.test(window.location.hash);
+
+        function redirectToAdmin() {
+          window.location.href = "/admin/";
+        }
+
+        window.netlifyIdentity.on("init", function () {
+          if (hasIdentityToken) {
+            window.netlifyIdentity.open();
+          }
+        });
+
+        window.netlifyIdentity.on("login", function () {
+          window.netlifyIdentity.close();
+          redirectToAdmin();
+        });
+      })();
+    </script>
     <script src="config.js" defer></script>
     <script src="app.js" defer></script>
   </body>
