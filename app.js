@@ -48,12 +48,12 @@ function normalizeCatalog(rawCatalog = {}) {
       })
     : [];
 
+  const flatProducts = Array.isArray(rawCatalog.products) ? rawCatalog.products : [];
+
   return {
     ...rawCatalog,
     categories: Array.isArray(rawCatalog.categories) ? rawCatalog.categories : [],
-    products: groupedProducts.length
-      ? groupedProducts
-      : Array.isArray(rawCatalog.products) ? rawCatalog.products : []
+    products: flatProducts.length ? flatProducts : groupedProducts
   };
 }
 
