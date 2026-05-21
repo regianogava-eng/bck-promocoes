@@ -168,6 +168,87 @@ function buildWhatsappUrl(message) {
   return `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
 }
 
+function automationSettings() {
+  return config.automation || {};
+}
+
+function createOrderId() {
+  const prefix = automationSettings().orderPrefix || "BCK";
+  const stamp = new Date().toISOString().replace(/\D/g, "").slice(2, 14);
+  const random = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `${prefix}-${stamp}-${random}`;
+}
+
+function configuredOrderApiUrl() {
+  return automationSettings().apiReady?.orderApiUrl || "";
+}
+
+function paymentInstructions(payment) {
+  const automation = automationSettings();
+
+  if (payment === "Pix") {
+    const pix = automation.pix || {};
+    return [
+      pix.instructions || "Faca o Pix e envie o comprovante pelo WhatsApp.",
+      pix.key && pix.key !== "CADASTRE_A_CHAVE_PIX" ? `Chave Pix: ${pix.key}` : "Chave Pix: solicitar no WhatsApp",
+      pix.receiverName ? `Recebedor: ${pix.receiverName}` : ""
+    ].filter(Boolean).join("\n");
+  }
+
+  if (payment === "Cartão na entrega" || payment === "Cartao na entrega") {
+    return automation.card?.instructions || "Pagamento no cartao na entrega.";
+  }
+
+  if (payment === "Dinheiro") {
+    return automation.cash?.instructions || "Informe se precisa de troco.";
+  }
+
+  return "";
+}
+
+function deliveryEstimate() {
+  const automation = automationSettings();
+  const prep = automation.estimatedPrepMinutes || 35;
+  const delivery = automation.estimatedDeliveryMinutes || 55;
+  return {
+    prepMinutes: prep,
+    deliveryMinutes: delivery,
+    text: `Preparo estimado: ${prep} min | Entrega estimada: ate ${delivery} min`
+  };
+}
+
+function saveLastOrder(order) {
+  try {
+    localStorage.setItem("bck-last-order", JSON.stringify(order));
+  } catch {
+    // Storage is only a convenience for local recovery.
+  }
+}
+
+async function submitOrderToApi(order) {
+  const orderApiUrl = configuredOrderApiUrl();
+  if (!orderApiUrl) return { skipped: true };
+
+  try {
+    const response = await fetch(orderApiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(order),
+      keepalive: true
+    });
+
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { ok: response.ok, raw: text };
+    }
+  } catch (error) {
+    console.info("Pedido salvo para WhatsApp. API futura indisponivel agora.", error);
+    return { ok: false, error: "order_api_unavailable" };
+  }
+}
+
 function ecommerceItem(product, quantity = 1) {
   return {
     item_id: product.id,
@@ -420,6 +501,8 @@ function renderCart() {
 }
 
 function buildOrderPayload(formData) {
+  const payment = formData.get("payment");
+  const estimate = deliveryEstimate();
   const items = state.cart
     .map((item) => {
       const product = productById(item.id);
@@ -436,7 +519,10 @@ function buildOrderPayload(formData) {
     .filter(Boolean);
 
   return {
+    id: createOrderId(),
     source: "site-promocoes-bck",
+    sourceUrl: window.location.href,
+    status: "received",
     createdAt: new Date().toISOString(),
     customer: {
       name: formData.get("customerName"),
@@ -444,11 +530,17 @@ function buildOrderPayload(formData) {
       address: formData.get("address"),
       notes: formData.get("notes") || "Sem observações"
     },
-    payment: formData.get("payment"),
+    payment,
+    paymentInstructions: paymentInstructions(payment),
+    estimates: estimate,
     totals: {
       subtotal: cartSubtotal(),
       deliveryFee: config.deliveryFee || 0,
       total: cartTotal()
+    },
+    automation: {
+      orderApiUrlConfigured: Boolean(configuredOrderApiUrl()),
+      whatsappCloudApiConfigured: Boolean(automationSettings().apiReady?.whatsappCloudApi)
     },
     items
   };
@@ -466,6 +558,7 @@ function buildOrderMessage(order) {
 
   return [
     `NOVO PEDIDO - ${config.storeName}`,
+    `Pedido: #${order.id}`,
     "",
     "Cliente:",
     `Nome: ${order.customer.name}`,
@@ -480,10 +573,13 @@ function buildOrderMessage(order) {
     `Entrega: ${formatMoney(order.totals.deliveryFee)}`,
     `Total: ${formatMoney(order.totals.total)}`,
     `Pagamento: ${order.payment}`,
+    order.paymentInstructions ? `Instrucao de pagamento:\n${order.paymentInstructions}` : "",
+    order.estimates?.text || "",
+    automationSettings().customerNextStepText || "",
     "",
     `Origem: ${order.source}`,
     `Horário: ${new Date(order.createdAt).toLocaleString("pt-BR")}`
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function submitOrder(event) {
@@ -500,7 +596,7 @@ function submitOrder(event) {
   const url = buildWhatsappUrl(message);
 
   trackEvent("purchase", {
-    transaction_id: `bck-${Date.now()}`,
+    transaction_id: order.id,
     value: order.totals.total,
     ecommerce: {
       items: order.items.map((item) => ({
@@ -518,6 +614,10 @@ function submitOrder(event) {
   });
 
   window.BCK_LAST_ORDER = order;
+  saveLastOrder(order);
+  submitOrderToApi(order).then((result) => {
+    window.BCK_LAST_ORDER_API_RESULT = result;
+  });
   window.open(url, "_blank", "noopener");
 }
 
@@ -684,6 +784,7 @@ function exposeIntegrationHooks() {
     changeQuantity,
     buildOrderPayload,
     buildOrderMessage,
+    submitOrderToApi,
     trackEvent
   };
 }
