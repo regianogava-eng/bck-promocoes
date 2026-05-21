@@ -1,5 +1,5 @@
 const config = window.BCK_CONFIG;
-let catalog = window.BCK_CATALOG || { categories: [], products: [] };
+let catalog = normalizeCatalog(window.BCK_CATALOG || { categories: [], products: [] });
 
 const state = {
   selectedCategory: "todos",
@@ -11,6 +11,51 @@ const moneyFormatter = new Intl.NumberFormat("pt-BR", {
   style: "currency",
   currency: config.currency || "BRL"
 });
+
+function normalizeCatalog(rawCatalog = {}) {
+  const groupCategoryMap = {
+    combos: "combos",
+    frango: "frango",
+    pizza: "pizza",
+    batata: "batata",
+    carne: "porcoes-carne",
+    bebidas: "bebidas",
+    hamburguer: "hamburguer"
+  };
+  const groups = rawCatalog.promotionGroups && typeof rawCatalog.promotionGroups === "object"
+    ? rawCatalog.promotionGroups
+    : null;
+
+  const groupedProducts = groups
+    ? Object.entries(groups).flatMap(([groupId, products]) => {
+        if (!Array.isArray(products)) return [];
+
+        return products.map((product) => {
+          const fallbackCategory = groupCategoryMap[groupId] || groupId;
+          const categories = Array.isArray(product.categories) && product.categories.length
+            ? product.categories
+            : [fallbackCategory];
+          const normalizedCategories = groupId === "combos" && !categories.includes("combos")
+            ? ["combos", ...categories]
+            : categories;
+
+          return {
+            ...product,
+            categories: normalizedCategories,
+            combo: typeof product.combo === "boolean" ? product.combo : groupId === "combos"
+          };
+        });
+      })
+    : [];
+
+  return {
+    ...rawCatalog,
+    categories: Array.isArray(rawCatalog.categories) ? rawCatalog.categories : [],
+    products: groupedProducts.length
+      ? groupedProducts
+      : Array.isArray(rawCatalog.products) ? rawCatalog.products : []
+  };
+}
 
 const els = {
   featuredDeal: document.querySelector("[data-featured-deal]"),
@@ -44,8 +89,8 @@ async function loadCatalogData() {
     const response = await fetch("data/catalog.json", { cache: "no-store" });
     if (!response.ok) return;
 
-    const remoteCatalog = await response.json();
-    if (remoteCatalog?.categories?.length && remoteCatalog?.products?.length) {
+    const remoteCatalog = normalizeCatalog(await response.json());
+    if (remoteCatalog.categories.length && remoteCatalog.products.length) {
       catalog = remoteCatalog;
     }
   } catch (error) {
