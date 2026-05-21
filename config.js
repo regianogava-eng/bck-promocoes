@@ -1,7 +1,7 @@
 window.BCK_CONFIG = {
   storeName: "BCK Beer Chicken",
   city: "Cachoeiro",
-  whatsappNumber: "5528999999999",
+  whatsappNumber: "5528999329677",
   currency: "BRL",
   deliveryFee: 0,
   placeholders: {
