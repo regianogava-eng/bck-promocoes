@@ -5,135 +5,311 @@ backend:
 media_folder: "assets/images"
 public_folder: "/assets/images"
 
-site_url: "/"
-display_url: "/"
+site_url: "https://jovial-vacherin-8c5599.netlify.app"
+display_url: "https://jovial-vacherin-8c5599.netlify.app"
 logo_url: "/assets/images/hero-bck-feast-mobile.webp"
 
 collections:
   - name: "catalogo"
-    label: "Catalogo BCK"
+    label: "Painel BCK"
     files:
-      - name: "promocoes"
-        label: "Promocoes, combos e categorias"
+      - name: "catalogo_bck"
+        label: "Produtos, combos e promocoes"
         file: "data/catalog.json"
         format: "json"
         editor:
           preview: false
         fields:
-          - label: "Categorias"
+          - label: "1. Abas do site"
             name: "categories"
             widget: "list"
+            collapsed: true
             summary: "{{fields.title}}"
+            hint: "Aqui ficam as abas que aparecem no site: Combos, Frango, Pizza, Carne, Bebidas e outras."
             fields:
-              - label: "ID"
+              - label: "ID interno"
                 name: "id"
                 widget: "string"
-                hint: "Use valores como combos, frango, pizza, batata, porcoes-carne, bebidas ou hamburguer."
-              - label: "Nome da categoria"
+                hint: "Nao altere se a aba ja existe. Exemplos: combos, frango, pizza, batata, porcoes-carne, bebidas, hamburguer."
+              - label: "Nome da aba"
                 name: "title"
                 widget: "string"
               - label: "Icone curto"
                 name: "icon"
                 widget: "string"
                 required: false
-              - label: "Descricao curta"
+                hint: "Use uma letra ou simbolo simples."
+              - label: "Texto curto da aba"
                 name: "description"
                 widget: "string"
                 required: false
 
-          - label: "Promocoes e combos"
-            name: "products"
-            widget: "list"
-            summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+          - label: "2. Produtos base para montar combos"
+            name: "baseProducts"
+            widget: "object"
+            collapsed: true
+            hint: "Cadastre aqui os produtos do cardapio. Eles servem como referencia para montar combos e promocoes."
             fields:
-              - label: "ID unico"
-                name: "id"
-                widget: "string"
-                hint: "Nao use espacos. Exemplo: combo-frango-pizza."
-              - label: "Ativo no site"
-                name: "active"
-                widget: "boolean"
-                default: true
-              - label: "Destaque do dia"
-                name: "featured"
-                widget: "boolean"
-                default: false
-                required: false
-              - label: "E combo cruzado"
-                name: "combo"
-                widget: "boolean"
-                default: false
-                required: false
-              - label: "Nome da promocao/combo"
-                name: "title"
-                widget: "string"
-              - label: "Descricao"
-                name: "description"
-                widget: "text"
-              - label: "Imagem"
-                name: "image"
-                widget: "image"
-                choose_url: false
-                required: true
-              - label: "Categoria"
-                name: "categories"
-                widget: "select"
-                multiple: true
-                min: 1
-                options:
-                  - { label: "Combos", value: "combos" }
-                  - { label: "Frango", value: "frango" }
-                  - { label: "Pizza", value: "pizza" }
-                  - { label: "Batata recheada", value: "batata" }
-                  - { label: "Porcoes de carne", value: "porcoes-carne" }
-                  - { label: "Bebidas", value: "bebidas" }
-                  - { label: "Hamburguer futuro", value: "hamburguer" }
-              - label: "Preco promocional"
-                name: "promoPrice"
-                widget: "number"
-                value_type: "float"
-                min: 0
-                step: 0.01
-              - label: "Preco antigo"
-                name: "originalPrice"
-                widget: "number"
-                value_type: "float"
-                min: 0
-                step: 0.01
-                required: false
-                hint: "Opcional. Use somente quando quiser mostrar preco riscado e economia."
-              - label: "Badge"
-                name: "badge"
-                widget: "select"
-                options:
-                  - "Mais pedido"
-                  - "Relampago"
-                  - "Combo da noite"
-                  - "Oferta limitada"
-                  - "Crocancia"
-                  - "Add rapido"
-                  - "Em breve"
-              - label: "Cor do badge"
-                name: "badgeType"
-                widget: "select"
-                default: "best"
-                options:
-                  - { label: "Dourado", value: "best" }
-                  - { label: "Vermelho relampago", value: "flash" }
-                  - { label: "Verde limitado", value: "limited" }
-                  - { label: "Quente", value: "hot" }
-              - label: "Itens do combo/produto"
-                name: "components"
+              - label: "Pizzas e bordas"
+                name: "pizzas"
                 widget: "list"
-                required: false
-                field:
-                  label: "Item"
-                  name: "item"
-                  widget: "string"
-              - label: "Prioridade de exibicao"
-                name: "sortScore"
-                widget: "number"
-                value_type: "int"
-                default: 50
-                min: 0
-                max: 999
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: &base_product_fields
+                  - label: "ID interno"
+                    name: "id"
+                    widget: "string"
+                    hint: "Use letras, numeros e hifens. Exemplo: pizza-calabresa-pequena."
+                  - label: "Ativo"
+                    name: "active"
+                    widget: "boolean"
+                    default: true
+                  - label: "Nome do produto"
+                    name: "title"
+                    widget: "string"
+                  - label: "Descricao curta"
+                    name: "description"
+                    widget: "text"
+                    required: false
+                  - label: "Preco base"
+                    name: "price"
+                    widget: "number"
+                    value_type: "float"
+                    min: 0
+                    step: 0.01
+                  - label: "Imagem"
+                    name: "image"
+                    widget: "image"
+                    choose_url: false
+                    required: false
+                  - label: "Sabores, tamanhos ou opcoes"
+                    name: "options"
+                    widget: "list"
+                    required: false
+                    field:
+                      label: "Opcao"
+                      name: "option"
+                      widget: "string"
+
+              - label: "Frangos"
+                name: "frangos"
+                widget: "list"
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: *base_product_fields
+
+              - label: "Batatas recheadas"
+                name: "batatas"
+                widget: "list"
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: *base_product_fields
+
+              - label: "Porcoes de carne"
+                name: "carnes"
+                widget: "list"
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: *base_product_fields
+
+              - label: "Bebidas"
+                name: "bebidas"
+                widget: "list"
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: *base_product_fields
+
+              - label: "Hamburgueres futuros"
+                name: "hamburgueres"
+                widget: "list"
+                collapsed: true
+                summary: "{{fields.title}} - R$ {{fields.price}}"
+                fields: *base_product_fields
+
+          - label: "3. Promocoes publicadas no site"
+            name: "promotionGroups"
+            widget: "object"
+            collapsed: false
+            hint: "Tudo que estiver ativo aqui aparece no site. Use as secoes como abas simples para editar."
+            fields:
+              - label: "Combos - produtos casados"
+                name: "combos"
+                widget: "list"
+                collapsed: true
+                label_singular: "Combo"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                hint: "Exemplos: pizza + frango, pizza + borda + refri, frango + batata + bebida."
+                fields: &promotion_fields
+                  - label: "ID interno"
+                    name: "id"
+                    widget: "string"
+                    hint: "Use letras, numeros e hifens. Exemplo: combo-pizza-frango."
+                  - label: "Ativo no site"
+                    name: "active"
+                    widget: "boolean"
+                    default: true
+                  - label: "Destaque principal do dia"
+                    name: "featured"
+                    widget: "boolean"
+                    default: false
+                    required: false
+                  - label: "E combo"
+                    name: "combo"
+                    widget: "boolean"
+                    default: false
+                    required: false
+                  - label: "Nome da promocao"
+                    name: "title"
+                    widget: "string"
+                  - label: "Descricao de venda"
+                    name: "description"
+                    widget: "text"
+                    hint: "Escreva curto e apetitoso. Exemplo: crocante, queijo derretido, bebida gelada."
+                  - label: "Imagem"
+                    name: "image"
+                    widget: "image"
+                    choose_url: false
+                    required: true
+                  - label: "Abas onde aparece"
+                    name: "categories"
+                    widget: "select"
+                    multiple: true
+                    min: 1
+                    options:
+                      - { label: "Combos", value: "combos" }
+                      - { label: "Frango", value: "frango" }
+                      - { label: "Pizza", value: "pizza" }
+                      - { label: "Batata recheada", value: "batata" }
+                      - { label: "Porcoes de carne", value: "porcoes-carne" }
+                      - { label: "Bebidas", value: "bebidas" }
+                      - { label: "Hamburguer futuro", value: "hamburguer" }
+                  - label: "Preco promocional"
+                    name: "promoPrice"
+                    widget: "number"
+                    value_type: "float"
+                    min: 0
+                    step: 0.01
+                  - label: "Preco antigo"
+                    name: "originalPrice"
+                    widget: "number"
+                    value_type: "float"
+                    min: 0
+                    step: 0.01
+                    required: false
+                    hint: "Opcional. Quando preenchido, o site mostra preco riscado e economia."
+                  - label: "Selo da oferta"
+                    name: "badge"
+                    widget: "select"
+                    options:
+                      - "Mais pedido"
+                      - "Relampago"
+                      - "Combo da noite"
+                      - "Oferta limitada"
+                      - "Crocancia"
+                      - "Add rapido"
+                      - "Em breve"
+                  - label: "Cor do selo"
+                    name: "badgeType"
+                    widget: "select"
+                    default: "best"
+                    options:
+                      - { label: "Dourado", value: "best" }
+                      - { label: "Vermelho relampago", value: "flash" }
+                      - { label: "Verde limitado", value: "limited" }
+                      - { label: "Quente", value: "hot" }
+                  - label: "Itens que aparecem dentro do combo"
+                    name: "components"
+                    widget: "list"
+                    required: false
+                    hint: "Exemplo: Pizza pequena, Frango 500g, Refri 2L."
+                    field:
+                      label: "Item"
+                      name: "item"
+                      widget: "string"
+                  - label: "Montagem guiada do combo"
+                    name: "comboBuilder"
+                    widget: "object"
+                    collapsed: true
+                    required: false
+                    hint: "Opcional. Use para registrar quais produtos do cardapio formam essa promocao."
+                    fields:
+                      - label: "Pizza escolhida"
+                        name: "pizza"
+                        widget: "string"
+                        required: false
+                      - label: "Frango escolhido"
+                        name: "frango"
+                        widget: "string"
+                        required: false
+                      - label: "Batata escolhida"
+                        name: "batata"
+                        widget: "string"
+                        required: false
+                      - label: "Carne escolhida"
+                        name: "carne"
+                        widget: "string"
+                        required: false
+                      - label: "Bebida escolhida"
+                        name: "bebida"
+                        widget: "string"
+                        required: false
+                      - label: "Hamburguer escolhido"
+                        name: "hamburguer"
+                        widget: "string"
+                        required: false
+                  - label: "Prioridade de exibicao"
+                    name: "sortScore"
+                    widget: "number"
+                    value_type: "int"
+                    default: 50
+                    min: 0
+                    max: 999
+                    hint: "Quanto maior, mais acima aparece. Sugestao: 100 para oferta principal."
+
+              - label: "Promocoes de frango"
+                name: "frango"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de frango"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
+
+              - label: "Promocoes de pizza"
+                name: "pizza"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de pizza"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
+
+              - label: "Promocoes de batata recheada"
+                name: "batata"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de batata"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
+
+              - label: "Promocoes de carne"
+                name: "carne"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de carne"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
+
+              - label: "Promocoes de bebidas"
+                name: "bebidas"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de bebida"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
+
+              - label: "Promocoes de hamburguer"
+                name: "hamburguer"
+                widget: "list"
+                collapsed: true
+                label_singular: "Promocao de hamburguer"
+                summary: "{{fields.title}} - R$ {{fields.promoPrice}}"
+                fields: *promotion_fields
