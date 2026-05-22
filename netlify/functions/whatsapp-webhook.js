@@ -7,6 +7,11 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type,X-Hub-Signature-256"
 };
 
+const SITE_FALLBACK = "https://bckbeerchicken.netlify.app";
+const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
+const CITY = process.env.BCK_CITY || "Cachoeiro";
+const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 18h as 23h";
+
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: JSON_HEADERS, body: "" };
@@ -120,49 +125,184 @@ function messageText(item) {
       || item.interactive?.list_reply?.id
       || "";
   }
-  return "";
+
+  return `__unsupported__:${item.type || "unknown"}`;
 }
 
 function buildAutoReply(message) {
   const text = normalize(message.text);
   const siteUrl = publicSiteUrl();
+  const offersUrl = `${siteUrl}#promocoes`;
+  const checkoutUrl = `${siteUrl}#checkout`;
 
-  if (hasAny(text, ["promo", "promocao", "promoção", "combo", "cardapio", "cardápio", "menu", "preco", "preço"])) {
+  if (text.startsWith("__unsupported__")) {
     return [
-      "Perfeito. Aqui estao as promocoes e combos da BCK:",
-      siteUrl,
-      "",
-      "Monte o carrinho no site e envie o pedido pronto por aqui."
+      "Por enquanto eu entendo melhor mensagens de texto.",
+      "Digite uma opcao:",
+      "1 - Ver promocoes",
+      "2 - Montar pedido",
+      "3 - Entrega",
+      "4 - Pagamento"
     ].join("\n");
   }
 
-  if (hasAny(text, ["pix", "pagamento", "cartao", "cartão", "dinheiro"])) {
+  if (isChoice(text, "1") || hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas", "cardapio", "menu", "preco", "precos"])) {
+    return promotionsReply(offersUrl);
+  }
+
+  if (isChoice(text, "2") || hasAny(text, ["pedido", "pedir", "comprar", "carrinho", "checkout", "finalizar", "quero pedir", "fazer pedido"])) {
+    return orderReply(siteUrl, checkoutUrl);
+  }
+
+  if (isChoice(text, "3") || hasAny(text, ["entrega", "delivery", "taxa", "bairro", "endereco", "rua", "numero", "localizacao"])) {
+    return deliveryReply();
+  }
+
+  if (isChoice(text, "4") || hasAny(text, ["pix", "pagamento", "pagar", "cartao", "dinheiro", "troco", "maquininha"])) {
+    return paymentReply();
+  }
+
+  if (isChoice(text, "5") || hasAny(text, ["apagar", "remover", "tirar", "excluir", "alterar", "mudar", "editar", "menos", "cancelar", "cancela"])) {
+    return changeOrderReply(siteUrl);
+  }
+
+  if (hasAny(text, ["combo", "combos", "casado", "pizza com frango", "frango com pizza"])) {
+    return categoryReply("Combos", "pizza + frango, pizza + borda + refri, frango + batata + bebida", offersUrl);
+  }
+
+  if (hasAny(text, ["frango", "file", "crocante", "frito", "porcao de frango"])) {
+    return categoryReply("Frango", "frango file 500g e combos com frango crocante", offersUrl);
+  }
+
+  if (hasAny(text, ["pizza", "borda", "calabresa", "mussarela", "catupiry"])) {
+    return categoryReply("Pizza", "pizza pequena promocional, borda recheada e combos com refri", offersUrl);
+  }
+
+  if (hasAny(text, ["batata", "cheddar", "bacon", "recheada"])) {
+    return categoryReply("Batata recheada", "batata com cheddar, bacon e combos com bebida", offersUrl);
+  }
+
+  if (hasAny(text, ["carne", "porcao", "porcoes", "porcao de carne"])) {
+    return categoryReply("Porcoes de carne", "porcoes para dividir com molho e acompanhamento", offersUrl);
+  }
+
+  if (hasAny(text, ["bebida", "bebidas", "refri", "refrigerante", "cerveja", "gelada"])) {
+    return categoryReply("Bebidas", "refri gelado e bebidas para completar o combo", offersUrl);
+  }
+
+  if (hasAny(text, ["hamburguer", "hamburger", "burguer", "burger"])) {
     return [
-      "No checkout do site voce escolhe Pix, cartao na entrega ou dinheiro.",
-      "Se escolher Pix, envie o comprovante aqui no WhatsApp depois de finalizar."
+      "A linha de hamburguer da BCK esta preparada para entrar no site em breve.",
+      "Hoje, o caminho mais forte e escolher combos de frango, pizza, batata e porcoes:",
+      offersUrl
     ].join("\n");
   }
 
-  if (hasAny(text, ["horario", "horário", "aberto", "fecha", "funciona"])) {
-    return process.env.BCK_OPERATING_HOURS
-      || "Hoje estamos recebendo pedidos pelo site. Confira as promocoes e envie seu pedido pronto pelo WhatsApp.";
-  }
-
-  if (hasAny(text, ["endereco", "endereço", "bairro", "entrega", "taxa"])) {
+  if (hasAny(text, ["horario", "horarios", "aberto", "abre", "fecha", "funciona", "funcionamento"])) {
     return [
-      "A entrega e conferida pelo endereco informado no checkout.",
-      "Coloque rua, numero, bairro e ponto de referencia para agilizar."
+      `Horario da ${STORE_NAME}:`,
+      DEFAULT_HOURS,
+      "Para agilizar, monte o pedido no site e envie o carrinho pronto por aqui.",
+      siteUrl
     ].join("\n");
   }
 
-  if (hasAny(text, ["atendente", "humano", "pessoa", "problema", "reclamar"])) {
-    return "Recebido. Um responsavel da BCK vai acompanhar por aqui. Para pedido novo, o caminho mais rapido e montar pelo site.";
+  if (hasAny(text, ["status", "acompanhar", "andamento", "meu pedido", "cade", "demora"])) {
+    return [
+      "Para acompanhar um pedido ja enviado, mande seu nome e telefone usados no checkout.",
+      "Se acabou de enviar, aguarde a confirmacao por aqui."
+    ].join("\n");
   }
 
+  if (hasAny(text, ["atendente", "humano", "pessoa", "falar com", "ajuda", "problema", "reclamar"])) {
+    return [
+      "Recebido. Sua mensagem ficou registrada para a equipe da BCK acompanhar.",
+      "Para pedido novo, o caminho mais rapido ainda e montar pelo site:",
+      siteUrl
+    ].join("\n");
+  }
+
+  if (hasAny(text, ["oi", "ola", "bom dia", "boa tarde", "boa noite", "e ai", "inicio", "comecar"])) {
+    return mainMenu(siteUrl);
+  }
+
+  if (hasAny(text, ["obrigado", "obrigada", "valeu", "blz", "beleza", "ok"])) {
+    return "Fechado. Quando quiser pedir, digite 1 para ver promocoes ou monte direto pelo site: " + siteUrl;
+  }
+
+  return mainMenu(siteUrl);
+}
+
+function mainMenu(siteUrl) {
   return [
-    "Oi! Eu sou o atendimento automatico da BCK Beer Chicken.",
-    "Para pedir mais rapido, escolha suas promocoes no site e envie o carrinho pronto:",
+    `Oi! Sou o atendimento automatico da ${STORE_NAME}.`,
+    "Escolha uma opcao:",
+    "1 - Promocoes e combos",
+    "2 - Montar pedido no site",
+    "3 - Entrega e endereco",
+    "4 - Formas de pagamento",
+    "5 - Alterar ou cancelar item",
+    "",
     siteUrl
+  ].join("\n");
+}
+
+function promotionsReply(offersUrl) {
+  return [
+    "Perfeito. Aqui estao as promocoes e combos da BCK:",
+    offersUrl,
+    "",
+    "No site voce escolhe os itens, monta o carrinho e envia o pedido pronto por aqui."
+  ].join("\n");
+}
+
+function orderReply(siteUrl, checkoutUrl) {
+  return [
+    "Para pedir sem espera:",
+    "1. Abra o site",
+    "2. Adicione combos ao carrinho",
+    "3. Preencha nome, telefone e endereco",
+    "4. Finalize e envie o pedido pelo WhatsApp",
+    "",
+    checkoutUrl || siteUrl
+  ].join("\n");
+}
+
+function deliveryReply() {
+  return [
+    `Fazemos delivery em ${CITY} e regiao conforme disponibilidade da noite.`,
+    "No checkout, informe rua, numero, bairro e ponto de referencia.",
+    "A taxa/confirmacao da entrega pode ser conferida pelo WhatsApp antes do preparo."
+  ].join("\n");
+}
+
+function paymentReply() {
+  return [
+    "Formas de pagamento:",
+    "Pix",
+    "Cartao na entrega",
+    "Dinheiro",
+    "",
+    "Se for dinheiro, informe se precisa de troco nas observacoes do pedido."
+  ].join("\n");
+}
+
+function changeOrderReply(siteUrl) {
+  return [
+    "Se voce ainda esta montando o pedido no site, abra o carrinho e use +, - ou remover item.",
+    "Se o pedido ja foi enviado, responda: CANCELAR PEDIDO + seu nome.",
+    "Assim a equipe confere antes de seguir para preparo.",
+    "",
+    siteUrl
+  ].join("\n");
+}
+
+function categoryReply(categoryName, examples, offersUrl) {
+  return [
+    `${categoryName} esta nas promocoes de hoje.`,
+    `Exemplos: ${examples}.`,
+    "Veja as ofertas, coloque no carrinho e finalize por aqui:",
+    offersUrl
   ].join("\n");
 }
 
@@ -203,15 +343,27 @@ async function sendTextMessage(to, body) {
 }
 
 function normalize(value = "") {
-  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return String(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
 }
 
 function hasAny(text, words) {
   return words.some((word) => text.includes(normalize(word)));
 }
 
+function isChoice(text, number) {
+  return text === number
+    || text === `opcao ${number}`
+    || text.startsWith(`${number} `)
+    || text.startsWith(`${number}-`)
+    || text.startsWith(`${number}.`);
+}
+
 function publicSiteUrl() {
-  return process.env.SITE_URL || process.env.URL || "https://jovial-vacherin-8c5599.netlify.app";
+  return (process.env.SITE_URL || process.env.URL || SITE_FALLBACK).replace(/\/$/, "");
 }
 
 function json(statusCode, payload) {
