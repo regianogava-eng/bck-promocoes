@@ -3,320 +3,180 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>BCK Beer Chicken | Combos e Promoções Delivery</title>
-    <meta
-      name="description"
-      content="Mini ecommerce de promoções da BCK Beer Chicken: combos, frango, pizza, batata recheada, porções, bebidas e checkout pelo WhatsApp."
-    >
-    <meta name="theme-color" content="#080808">
-    <meta property="og:title" content="BCK Beer Chicken | Combos e Promoções">
-    <meta property="og:description" content="Escolha combos, monte o carrinho e finalize pelo WhatsApp.">
-    <meta property="og:type" content="website">
-    <meta property="og:image" content="assets/images/hero-bck-feast.webp">
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&family=Poppins:wght@500;600;700;800;900&display=swap"
-      rel="stylesheet"
-    >
-    <link rel="preload" as="image" href="assets/images/hero-bck-feast-mobile.webp" media="(max-width: 760px)">
-    <link rel="preload" as="image" href="assets/images/hero-bck-feast.webp" media="(min-width: 761px)">
-    <link rel="stylesheet" href="styles.css">
+    <meta name="robots" content="noindex">
+    <title>Painel BCK | Beer Chicken</title>
+    <link rel="preconnect" href="https://identity.netlify.com">
+    <link rel="stylesheet" href="/admin/admin.css">
   </head>
   <body>
-    <a class="skip-link" href="#catalogo">Ir para o catálogo</a>
+    <div class="admin-shell">
+      <aside class="admin-side">
+        <a class="brand" href="/" target="_blank" rel="noreferrer">
+          <span class="brand-mark">BCK</span>
+          <span>
+            <strong>BCK Admin</strong>
+            <small>Promocoes e delivery</small>
+          </span>
+        </a>
 
-    <header class="store-header" data-header>
-      <a class="brand" href="#inicio" aria-label="BCK Beer Chicken">
-        <span class="brand__mark">BCK</span>
-        <span class="brand__name">Beer Chicken</span>
-      </a>
-
-      <nav class="desktop-nav" aria-label="Navegação principal">
-        <a href="#catalogo">Categorias</a>
-        <a href="#combos">Combos</a>
-        <a href="#checkout">Checkout</a>
-      </nav>
-
-      <button class="cart-trigger" type="button" data-open-cart aria-label="Abrir carrinho">
-        <span>Carrinho</span>
-        <strong data-cart-count>0</strong>
-      </button>
-    </header>
-
-    <main id="inicio">
-      <section class="hero-store" aria-labelledby="hero-title">
-        <picture class="hero-store__image">
-          <source media="(max-width: 760px)" srcset="assets/images/hero-bck-feast-mobile.webp" type="image/webp">
-          <source srcset="assets/images/hero-bck-feast.webp" type="image/webp">
-          <img src="assets/images/hero-bck-feast.png" alt="Combos de frango, pizza e cheddar da BCK Beer Chicken" width="1700" height="895">
-        </picture>
-        <div class="hero-store__overlay" aria-hidden="true"></div>
-
-        <div class="hero-store__content">
-          <div class="hero-copy">
-            <div class="offer-strip">
-              <span>Aberto agora</span>
-              <span>Delivery em Cachoeiro</span>
-              <span data-today-label>Promoções de hoje</span>
-            </div>
-            <p class="brand-lockup">
-              <span>BCK</span>
-              <strong>Beer Chicken</strong>
-            </p>
-            <h1 id="hero-title">Escolha o combo. Monte o pedido. Receba quente.</h1>
-            <p class="hero-copy__lead">
-              Um site de promoções feito para pedido rápido: combos cruzados, carrinho funcional e checkout direto no WhatsApp.
-            </p>
-            <div class="hero-actions">
-              <a class="btn btn--primary btn--large" href="#catalogo" data-track-click="hero_ver_ofertas">Ver ofertas</a>
-              <button class="btn btn--whatsapp btn--large" type="button" data-open-checkout data-track-click="hero_checkout">
-                Finalizar pedido
-              </button>
-            </div>
-          </div>
-
-          <article class="deal-card" data-featured-deal aria-label="Promoção principal do dia">
-            <span class="deal-card__badge">Oferta do dia</span>
-            <div class="deal-card__content">
-              <span class="skeleton-line"></span>
-            </div>
-          </article>
+        <div class="quick-panel">
+          <span class="quick-label">Status</span>
+          <strong id="sessionLabel">Verificando login...</strong>
+          <small id="saveLabel">Carregando catalogo</small>
         </div>
-      </section>
 
-      <section class="promo-ticker" aria-label="Avisos rápidos">
-        <div class="promo-ticker__track" data-ticker-track>
-          <span>Promoções válidas hoje</span>
-          <span>Combos limitados</span>
-          <span>Mais pedidos da noite</span>
-          <span>Checkout pelo WhatsApp</span>
-          <span>Preparado para Pix online futuro</span>
+        <nav class="category-nav" id="categoryNav" aria-label="Categorias"></nav>
+
+        <div class="side-actions">
+          <a class="ghost-link" href="/admin/decap.html">Abrir Decap antigo</a>
+          <a class="ghost-link" href="/" target="_blank" rel="noreferrer">Ver site</a>
         </div>
-      </section>
+      </aside>
 
-      <section class="metrics" aria-label="Prova social">
-        <article>
-          <strong>Desde 1988</strong>
-          <span>tradição no sabor</span>
-        </article>
-        <article>
-          <strong>4,8 ★</strong>
-          <span>avaliação média</span>
-        </article>
-        <article>
-          <strong>Milhares</strong>
-          <span>de pedidos no delivery</span>
-        </article>
-        <article>
-          <strong>Top noite</strong>
-          <span>combos mais lembrados</span>
-        </article>
-      </section>
-
-      <section class="catalog-section" id="catalogo" aria-labelledby="catalog-title">
-        <div class="section-head">
+      <main class="admin-main">
+        <header class="topbar">
           <div>
-            <span class="eyebrow">Mini ecommerce</span>
-            <h2 id="catalog-title">Categorias de promoções</h2>
-            <p>Filtre, adicione ao carrinho e avance para checkout sem sair da página.</p>
+            <p class="eyebrow">Painel de ofertas</p>
+            <h1>Edite fotos, precos e promocoes.</h1>
           </div>
-          <div class="countdown">
-            <span>Ofertas fecham em</span>
-            <strong data-countdown>--:--:--</strong>
+          <div class="top-actions">
+            <button class="btn secondary" type="button" id="loginButton">Entrar</button>
+            <button class="btn secondary hidden" type="button" id="logoutButton">Sair</button>
+            <button class="btn secondary" type="button" id="reloadButton">Recarregar</button>
+            <button class="btn primary" type="button" id="saveButton">Salvar no site</button>
           </div>
-        </div>
+        </header>
 
-        <div class="category-rail" data-category-rail aria-label="Categorias"></div>
+        <section class="metric-grid" aria-label="Resumo">
+          <article class="metric">
+            <span>Ofertas ativas</span>
+            <strong id="activeCount">0</strong>
+          </article>
+          <article class="metric">
+            <span>Combos</span>
+            <strong id="comboCount">0</strong>
+          </article>
+          <article class="metric">
+            <span>Destaques</span>
+            <strong id="featuredCount">0</strong>
+          </article>
+        </section>
 
-        <div class="catalog-toolbar">
-          <p><strong data-visible-count>0</strong> ofertas disponíveis</p>
-          <select data-sort-select aria-label="Ordenar ofertas">
-            <option value="featured">Mais estratégicas</option>
-            <option value="price-asc">Menor preço</option>
-            <option value="saving-desc">Maior economia</option>
-          </select>
-        </div>
+        <section class="tool-row">
+          <label class="search-box">
+            <span>Buscar</span>
+            <input id="searchInput" type="search" placeholder="Nome, descricao ou categoria">
+          </label>
+          <button class="btn accent" type="button" id="newProductButton">Nova oferta</button>
+        </section>
 
-        <div class="product-grid" data-product-grid></div>
-      </section>
-
-      <section class="combo-builder" id="combos" aria-labelledby="combo-title">
-        <div class="section-head section-head--single">
-          <span class="eyebrow">Combos cruzados</span>
-          <h2 id="combo-title">Combinações prontas para vender mais.</h2>
-          <p>Ofertas agrupam produtos de categorias diferentes e já entram no carrinho como combo.</p>
-        </div>
-        <div class="combo-grid" data-combo-grid></div>
-      </section>
-
-      <section class="checkout-section" id="checkout" aria-labelledby="checkout-title">
-        <div class="checkout-layout">
-          <div class="checkout-copy">
-            <span class="eyebrow">Checkout simples</span>
-            <h2 id="checkout-title">Finalize com dados de entrega e pagamento.</h2>
-            <p>
-              O pedido sai estruturado para o WhatsApp da loja agora, e o código já fica preparado para API, pagamento online,
-              impressão automática e painel de pedidos.
-            </p>
-            <ul class="future-list">
-              <li>Eventos: view_item, add_to_cart, begin_checkout e purchase/lead.</li>
-              <li>Integração futura: backend/API, Pix automático e painel administrativo.</li>
-              <li>Campos prontos: cliente, telefone, endereço, observações e pagamento.</li>
-            </ul>
-          </div>
-
-          <form class="checkout-form" data-checkout-form>
-            <label>
-              Nome
-              <input name="customerName" type="text" autocomplete="name" placeholder="Seu nome" required>
-            </label>
-            <label>
-              Telefone
-              <input name="phone" type="tel" autocomplete="tel" placeholder="(28) 99999-9999" required>
-            </label>
-            <label class="form-field--full">
-              Endereço de entrega
-              <input name="address" type="text" autocomplete="street-address" placeholder="Rua, número, bairro e referência" required>
-            </label>
-            <label class="form-field--full">
-              Observações
-              <textarea name="notes" rows="3" placeholder="Ex: sem cebola, troco para R$ 100, ponto da carne..."></textarea>
-            </label>
-            <fieldset class="payment-field form-field--full">
-              <legend>Forma de pagamento</legend>
-              <label>
-                <input type="radio" name="payment" value="Pix" checked>
-                Pix
-              </label>
-              <label>
-                <input type="radio" name="payment" value="Cartão na entrega">
-                Cartão na entrega
-              </label>
-              <label>
-                <input type="radio" name="payment" value="Dinheiro">
-                Dinheiro
-              </label>
-            </fieldset>
-            <button class="btn btn--whatsapp btn--large form-field--full" type="submit">
-              Enviar pedido completo
-            </button>
-          </form>
-        </div>
-      </section>
-    </main>
-
-    <aside class="cart-drawer" data-cart-drawer hidden aria-label="Carrinho de compras">
-      <div class="cart-drawer__head">
-        <div>
-          <span class="eyebrow">Seu pedido</span>
-          <h2>Carrinho</h2>
-        </div>
-        <button class="icon-button" type="button" data-close-cart aria-label="Fechar carrinho">×</button>
-      </div>
-
-      <div class="cart-drawer__body">
-        <div class="cart-empty" data-cart-empty>
-          Adicione uma promoção para começar o pedido.
-        </div>
-        <div class="cart-list" data-cart-list></div>
-      </div>
-
-      <div class="cart-summary">
-        <div>
-          <span>Subtotal</span>
-          <strong data-cart-subtotal>R$ 0,00</strong>
-        </div>
-        <div>
-          <span>Total</span>
-          <strong data-cart-total>R$ 0,00</strong>
-        </div>
-        <button class="btn btn--primary btn--full" type="button" data-open-checkout>Ir para checkout</button>
-      </div>
-    </aside>
-
-    <div class="mobile-bar" data-mobile-bar>
-      <button type="button" data-open-cart>
-        <span><strong data-cart-count>0</strong> itens</span>
-        <small data-cart-total-mobile>R$ 0,00</small>
-      </button>
-      <button class="btn btn--primary" type="button" data-open-checkout>Checkout</button>
+        <section class="notice" id="notice" hidden></section>
+        <section class="product-grid" id="productGrid" aria-live="polite"></section>
+      </main>
     </div>
 
-    <template id="category-template">
-      <button class="category-card" type="button" data-category="">
-        <span class="category-card__icon"></span>
-        <strong></strong>
-        <small></small>
-      </button>
-    </template>
-
-    <template id="product-template">
-      <article class="product-card">
-        <button class="product-card__quick" type="button" data-view-item="">Ver detalhes</button>
-        <div class="product-card__media">
-          <img src="" alt="" width="920" height="690" loading="lazy">
-          <span class="badge"></span>
-        </div>
-        <div class="product-card__body">
-          <span class="product-card__category"></span>
-          <h3></h3>
-          <p></p>
-          <div class="price-block">
-            <span class="old-price"></span>
-            <strong></strong>
-            <small></small>
+    <dialog class="editor-dialog" id="productDialog">
+      <form class="editor" id="productForm" method="dialog">
+        <header class="editor-head">
+          <div>
+            <p class="eyebrow">Editar oferta</p>
+            <h2 id="editorTitle">Nova oferta</h2>
           </div>
-          <div class="product-card__actions">
-            <button class="btn btn--primary" type="button" data-add-item="">Adicionar</button>
-            <button class="btn btn--ghost" type="button" data-open-checkout-from-item="">Comprar</button>
-          </div>
-        </div>
-      </article>
-    </template>
+          <button class="icon-button" type="button" id="closeEditorButton" aria-label="Fechar">x</button>
+        </header>
 
-    <template id="cart-item-template">
-      <article class="cart-item">
-        <div>
-          <h3></h3>
-          <p></p>
-          <span class="cart-item__subtotal"></span>
+        <div class="editor-body">
+          <section class="photo-panel">
+            <img id="imagePreview" alt="Previa da oferta">
+            <label class="file-button">
+              <input id="productImageFile" type="file" accept="image/*">
+              Trocar foto
+            </label>
+            <label>
+              Caminho da imagem
+              <input id="productImage" name="image" type="text" placeholder="assets/images/foto.jpg">
+            </label>
+          </section>
+
+          <section class="form-grid">
+            <label class="span-2">
+              Nome da promocao ou combo
+              <input id="productTitle" name="title" type="text" required>
+            </label>
+
+            <label class="span-2">
+              Descricao vendedora
+              <textarea id="productDescription" name="description" rows="4"></textarea>
+            </label>
+
+            <label>
+              Preco promocional
+              <input id="productPromoPrice" name="promoPrice" type="number" min="0" step="0.01" required>
+            </label>
+
+            <label>
+              Preco antigo
+              <input id="productOriginalPrice" name="originalPrice" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Selo da oferta
+              <input id="productBadge" name="badge" type="text" placeholder="Mais pedido">
+            </label>
+
+            <label>
+              Cor do selo
+              <select id="productBadgeType" name="badgeType">
+                <option value="hot">Vermelho oferta</option>
+                <option value="best">Dourado destaque</option>
+                <option value="night">Noite premium</option>
+                <option value="new">Verde novo</option>
+              </select>
+            </label>
+
+            <div class="switch-list span-2">
+              <label class="switch">
+                <input id="productActive" type="checkbox">
+                <span>Ativa no site</span>
+              </label>
+              <label class="switch">
+                <input id="productFeatured" type="checkbox">
+                <span>Oferta principal</span>
+              </label>
+              <label class="switch">
+                <input id="productCombo" type="checkbox">
+                <span>Este item e combo</span>
+              </label>
+            </div>
+
+            <fieldset class="span-2">
+              <legend>Abas onde aparece</legend>
+              <div class="check-grid" id="categoryChecks"></div>
+            </fieldset>
+
+            <label class="span-2">
+              Itens do combo, um por linha
+              <textarea id="productComponents" name="components" rows="5"></textarea>
+            </label>
+
+            <label>
+              Ordem de destaque
+              <input id="productSortScore" name="sortScore" type="number" step="1">
+            </label>
+          </section>
         </div>
-        <div class="qty-control">
-          <button type="button" data-decrease-item="">−</button>
-          <output></output>
-          <button type="button" data-increase-item="">+</button>
-        </div>
-        <button class="cart-item__remove" type="button" data-remove-item="">Remover</button>
-      </article>
-    </template>
+
+        <footer class="editor-actions">
+          <button class="btn danger" type="button" id="deleteProductButton">Excluir</button>
+          <button class="btn secondary" type="button" id="duplicateProductButton">Duplicar</button>
+          <span class="editor-spacer"></span>
+          <button class="btn secondary" type="button" id="cancelEditorButton">Cancelar</button>
+          <button class="btn primary" type="submit">Aplicar</button>
+        </footer>
+      </form>
+    </dialog>
 
     <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-    <script>
-      (function () {
-        if (!window.netlifyIdentity) return;
-
-        var identityTokenPattern = /(?:confirmation|invite|recovery|email_change)_token=/;
-        var hasIdentityToken = identityTokenPattern.test(window.location.hash);
-
-        function redirectToAdmin() {
-          window.location.href = "/admin/";
-        }
-
-        window.netlifyIdentity.on("init", function () {
-          if (hasIdentityToken) {
-            window.netlifyIdentity.open();
-          }
-        });
-
-        window.netlifyIdentity.on("login", function () {
-          window.netlifyIdentity.close();
-          redirectToAdmin();
-        });
-      })();
-    </script>
-    <script src="config.js" defer></script>
-    <script src="app.js" defer></script>
+    <script src="/admin/admin.js" defer></script>
   </body>
 </html>
