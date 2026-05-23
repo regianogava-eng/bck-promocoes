@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Decap | BCK Beer Chicken</title>
+    <link href="/admin/config.yml" type="text/yaml" rel="cms-config-url">
+  </head>
+  <body>
+    <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+    <script>
+      if (window.netlifyIdentity) {
+        window.netlifyIdentity.on("login", function () {
+          window.netlifyIdentity.close();
+          document.location.href = "/admin/decap.html";
+        });
+      }
+    </script>
+    <script src="https://unpkg.com/decap-cms@3.1.10/dist/decap-cms.js"></script>
+  </body>
+</html>

@@ -4,19 +4,179 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>Admin | BCK Beer Chicken</title>
-    <link href="/admin/config.yml" type="text/yaml" rel="cms-config-url">
+    <title>Painel BCK | Beer Chicken</title>
+    <link rel="preconnect" href="https://identity.netlify.com">
+    <link rel="stylesheet" href="/admin/admin.css">
   </head>
   <body>
+    <div class="admin-shell">
+      <aside class="admin-side">
+        <a class="brand" href="/" target="_blank" rel="noreferrer">
+          <span class="brand-mark">BCK</span>
+          <span>
+            <strong>BCK Admin</strong>
+            <small>Promocoes e delivery</small>
+          </span>
+        </a>
+
+        <div class="quick-panel">
+          <span class="quick-label">Status</span>
+          <strong id="sessionLabel">Verificando login...</strong>
+          <small id="saveLabel">Carregando catalogo</small>
+        </div>
+
+        <nav class="category-nav" id="categoryNav" aria-label="Categorias"></nav>
+
+        <div class="side-actions">
+          <a class="ghost-link" href="/admin/decap.html">Abrir Decap antigo</a>
+          <a class="ghost-link" href="/" target="_blank" rel="noreferrer">Ver site</a>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Painel de ofertas</p>
+            <h1>Edite fotos, precos e promocoes.</h1>
+          </div>
+          <div class="top-actions">
+            <button class="btn secondary" type="button" id="loginButton">Entrar</button>
+            <button class="btn secondary hidden" type="button" id="logoutButton">Sair</button>
+            <button class="btn secondary" type="button" id="reloadButton">Recarregar</button>
+            <button class="btn primary" type="button" id="saveButton">Salvar no site</button>
+          </div>
+        </header>
+
+        <section class="metric-grid" aria-label="Resumo">
+          <article class="metric">
+            <span>Ofertas ativas</span>
+            <strong id="activeCount">0</strong>
+          </article>
+          <article class="metric">
+            <span>Combos</span>
+            <strong id="comboCount">0</strong>
+          </article>
+          <article class="metric">
+            <span>Destaques</span>
+            <strong id="featuredCount">0</strong>
+          </article>
+        </section>
+
+        <section class="tool-row">
+          <label class="search-box">
+            <span>Buscar</span>
+            <input id="searchInput" type="search" placeholder="Nome, descricao ou categoria">
+          </label>
+          <button class="btn accent" type="button" id="newProductButton">Nova oferta</button>
+        </section>
+
+        <section class="notice" id="notice" hidden></section>
+        <section class="product-grid" id="productGrid" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog class="editor-dialog" id="productDialog">
+      <form class="editor" id="productForm" method="dialog">
+        <header class="editor-head">
+          <div>
+            <p class="eyebrow">Editar oferta</p>
+            <h2 id="editorTitle">Nova oferta</h2>
+          </div>
+          <button class="icon-button" type="button" id="closeEditorButton" aria-label="Fechar">x</button>
+        </header>
+
+        <div class="editor-body">
+          <section class="photo-panel">
+            <img id="imagePreview" alt="Previa da oferta">
+            <label class="file-button">
+              <input id="productImageFile" type="file" accept="image/*">
+              Trocar foto
+            </label>
+            <label>
+              Caminho da imagem
+              <input id="productImage" name="image" type="text" placeholder="assets/images/foto.jpg">
+            </label>
+          </section>
+
+          <section class="form-grid">
+            <label class="span-2">
+              Nome da promocao ou combo
+              <input id="productTitle" name="title" type="text" required>
+            </label>
+
+            <label class="span-2">
+              Descricao vendedora
+              <textarea id="productDescription" name="description" rows="4"></textarea>
+            </label>
+
+            <label>
+              Preco promocional
+              <input id="productPromoPrice" name="promoPrice" type="number" min="0" step="0.01" required>
+            </label>
+
+            <label>
+              Preco antigo
+              <input id="productOriginalPrice" name="originalPrice" type="number" min="0" step="0.01">
+            </label>
+
+            <label>
+              Selo da oferta
+              <input id="productBadge" name="badge" type="text" placeholder="Mais pedido">
+            </label>
+
+            <label>
+              Cor do selo
+              <select id="productBadgeType" name="badgeType">
+                <option value="hot">Vermelho oferta</option>
+                <option value="best">Dourado destaque</option>
+                <option value="night">Noite premium</option>
+                <option value="new">Verde novo</option>
+              </select>
+            </label>
+
+            <div class="switch-list span-2">
+              <label class="switch">
+                <input id="productActive" type="checkbox">
+                <span>Ativa no site</span>
+              </label>
+              <label class="switch">
+                <input id="productFeatured" type="checkbox">
+                <span>Oferta principal</span>
+              </label>
+              <label class="switch">
+                <input id="productCombo" type="checkbox">
+                <span>Este item e combo</span>
+              </label>
+            </div>
+
+            <fieldset class="span-2">
+              <legend>Abas onde aparece</legend>
+              <div class="check-grid" id="categoryChecks"></div>
+            </fieldset>
+
+            <label class="span-2">
+              Itens do combo, um por linha
+              <textarea id="productComponents" name="components" rows="5"></textarea>
+            </label>
+
+            <label>
+              Ordem de destaque
+              <input id="productSortScore" name="sortScore" type="number" step="1">
+            </label>
+          </section>
+        </div>
+
+        <footer class="editor-actions">
+          <button class="btn danger" type="button" id="deleteProductButton">Excluir</button>
+          <button class="btn secondary" type="button" id="duplicateProductButton">Duplicar</button>
+          <span class="editor-spacer"></span>
+          <button class="btn secondary" type="button" id="cancelEditorButton">Cancelar</button>
+          <button class="btn primary" type="submit">Aplicar</button>
+        </footer>
+      </form>
+    </dialog>
+
     <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
-    <script>
-      if (window.netlifyIdentity) {
-        window.netlifyIdentity.on("login", function () {
-          window.netlifyIdentity.close();
-          document.location.href = "/admin/";
-        });
-      }
-    </script>
-    <script src="https://unpkg.com/decap-cms@3.1.10/dist/decap-cms.js"></script>
+    <script src="/admin/admin.js" defer></script>
   </body>
 </html>
