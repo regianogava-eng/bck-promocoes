@@ -36,7 +36,7 @@ exports.handler = async function handler(event) {
   };
 
   const loyaltyResult = await saveOrderAndUpdateLoyalty(normalizedOrder);
-  if (loyaltyResult.ok) {
+  if (loyaltyResult.loyalty) {
     normalizedOrder.loyalty = {
       ...(normalizedOrder.loyalty || {}),
       ...loyaltyResult.loyalty
@@ -381,24 +381,37 @@ function formatOrderMessage(order) {
 function loyaltyMessageLines(loyalty = {}) {
   if (!loyalty.enabled || !loyalty.purchaseTarget) return [];
 
+  const purchaseCount = Number(loyalty.purchaseCount);
+  const purchaseTarget = Number(loyalty.purchaseTarget);
+  const remaining = Number(loyalty.remaining);
+  const rewardTitle = loyalty.rewardTitle || DEFAULT_LOYALTY_REWARD;
+
+  if (!Number.isFinite(purchaseCount) || !Number.isFinite(purchaseTarget) || !Number.isFinite(remaining)) {
+    return [
+      "FIDELIDADE:",
+      "Contador nao confirmou este pedido agora. Validar antes de liberar premio."
+    ];
+  }
+
   if (loyalty.rewardUnlocked) {
     return [
       "FIDELIDADE:",
-      `Cliente completou ${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes.`,
-      `Premio liberado: ${loyalty.rewardTitle}.`
+      `Cliente completou ${purchaseCount}/${purchaseTarget} pedidos no mes.`,
+      `Premio liberado: ${rewardTitle}.`
     ];
   }
 
   if (loyalty.rewardStatus === "available") {
     return [
       "FIDELIDADE:",
-      `${loyalty.rewardTitle} ja esta disponivel para este telefone neste mes.`
+      `${rewardTitle} ja esta disponivel para este telefone neste mes.`,
+      `Historico: ${purchaseCount}/${purchaseTarget} pedidos no mes.`
     ];
   }
 
   return [
     "FIDELIDADE:",
-    `${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes. Faltam ${loyalty.remaining}.`
+    `${purchaseCount}/${purchaseTarget} pedidos no mes. Faltam ${remaining}.`
   ];
 }
 

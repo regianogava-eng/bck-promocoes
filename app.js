@@ -455,7 +455,7 @@ async function submitOrderToApi(order) {
   }
 }
 
-function submitOrderToApiWithTimeout(order, timeoutMs = 3500) {
+function submitOrderToApiWithTimeout(order, timeoutMs = 9000) {
   return Promise.race([
     submitOrderToApi(order),
     new Promise((resolve) => {
@@ -1016,12 +1016,25 @@ function buildOrderMessage(order) {
 function loyaltyMessageLines(loyalty = {}) {
   if (!loyalty.enabled || !loyalty.purchaseTarget) return [];
 
+  const purchaseCount = Number(loyalty.purchaseCount);
+  const purchaseTarget = Number(loyalty.purchaseTarget);
+  const remaining = Number(loyalty.remaining);
+  const rewardTitle = loyalty.rewardTitle || "Pedido gratis";
+
+  if (!Number.isFinite(purchaseCount) || !Number.isFinite(purchaseTarget) || !Number.isFinite(remaining)) {
+    return [
+      "",
+      "FIDELIDADE BCK:",
+      "Contador nao confirmou este pedido agora. Validar antes de liberar premio."
+    ];
+  }
+
   if (loyalty.rewardUnlocked) {
     return [
       "",
       "FIDELIDADE BCK:",
-      `Cliente completou ${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes.`,
-      `Premio liberado: ${loyalty.rewardTitle}.`
+      `Cliente completou ${purchaseCount}/${purchaseTarget} pedidos no mes.`,
+      `Premio liberado: ${rewardTitle}.`
     ];
   }
 
@@ -1029,14 +1042,15 @@ function loyaltyMessageLines(loyalty = {}) {
     return [
       "",
       "FIDELIDADE BCK:",
-      `${loyalty.rewardTitle} ja esta disponivel para este telefone neste mes.`
+      `${rewardTitle} ja esta disponivel para este telefone neste mes.`,
+      `Historico: ${purchaseCount}/${purchaseTarget} pedidos no mes.`
     ];
   }
 
   return [
     "",
     "FIDELIDADE BCK:",
-    `${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes. Faltam ${loyalty.remaining}.`
+    `${purchaseCount}/${purchaseTarget} pedidos no mes. Faltam ${remaining}.`
   ];
 }
 
