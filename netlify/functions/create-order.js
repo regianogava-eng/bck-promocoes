@@ -106,25 +106,43 @@ async function saveOrderAndUpdateLoyalty(order) {
     });
 
     const loyaltyKey = `customers/${phone}/${month}`;
+    const orderLedgerKey = loyaltyOrderKey(phone, month, order.id);
     const existing = await loyaltyStore.get(loyaltyKey, { consistency: "strong", type: "json" });
-    const history = normalizeMonthlyHistory(existing, phone, month);
-    const previousCount = history.orders.length;
 
-    if (!history.orders.some((item) => item.id === order.id)) {
-      history.orders.push(orderRecord);
-    }
+    await loyaltyStore.setJSON(orderLedgerKey, orderRecord, {
+      metadata: {
+        phone,
+        month,
+        orderId: order.id,
+        total: String(Number(order.totals.total) || 0)
+      }
+    });
 
-    history.customerName = order.customer.name || history.customerName || "";
-    history.updatedAt = new Date().toISOString();
+    const historyOrders = await collectMonthlyLoyaltyOrders({
+      ordersStore,
+      loyaltyStore,
+      phone,
+      month,
+      currentOrder: orderRecord
+    });
+    const previousCount = Math.max(
+      Number(existing?.loyalty?.purchaseCount) || 0,
+      historyOrders.filter((item) => item.id !== order.id).length
+    );
 
     const nextLoyalty = loyaltySnapshot({
       phone,
       month,
-      orders: history.orders,
+      orders: historyOrders,
       settings: loyaltySettings,
       previousCount
     });
 
+    const history = normalizeMonthlyHistory(existing, phone, month);
+    history.customerName = order.customer.name || history.customerName || "";
+    history.updatedAt = new Date().toISOString();
+    history.version = 2;
+    history.orders = historyOrders;
     history.loyalty = nextLoyalty;
 
     await loyaltyStore.setJSON(loyaltyKey, history, {
@@ -252,6 +270,50 @@ function orderHistoryRecord(order, phone, month) {
         }))
       : []
   };
+}
+
+async function collectMonthlyLoyaltyOrders({ ordersStore, loyaltyStore, phone, month, currentOrder }) {
+  const orders = new Map();
+  addOrderToMap(orders, currentOrder, phone, month);
+
+  const ledgerPrefix = `customers/${phone}/${month}/orders/`;
+  const ledgerEntries = await loyaltyStore.list({ prefix: ledgerPrefix });
+  await Promise.all((ledgerEntries.blobs || []).map(async (entry) => {
+    const record = await loyaltyStore.get(entry.key, { consistency: "strong", type: "json" });
+    addOrderToMap(orders, record, phone, month);
+  }));
+
+  const allOrderEntries = await ordersStore.list({ prefix: "orders/" });
+  await Promise.all((allOrderEntries.blobs || []).map(async (entry) => {
+    const record = await ordersStore.get(entry.key, { consistency: "strong", type: "json" });
+    if (!addOrderToMap(orders, record, phone, month)) return;
+
+    await loyaltyStore.setJSON(loyaltyOrderKey(phone, month, record.id), record, {
+      metadata: {
+        phone,
+        month,
+        orderId: record.id,
+        total: String(Number(record.total) || 0)
+      }
+    });
+  }));
+
+  return [...orders.values()].sort((a, b) => {
+    return String(a.createdAt || a.receivedAt || "").localeCompare(String(b.createdAt || b.receivedAt || ""));
+  });
+}
+
+function addOrderToMap(orders, record, phone, month) {
+  if (!record || !record.id || onlyDigits(record.phone || record.customerPhone) !== phone || record.month !== month) {
+    return false;
+  }
+
+  orders.set(record.id, record);
+  return true;
+}
+
+function loyaltyOrderKey(phone, month, orderId) {
+  return `customers/${phone}/${month}/orders/${orderId}`;
 }
 
 async function forwardToOrderWebhook(order) {
