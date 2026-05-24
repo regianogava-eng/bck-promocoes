@@ -254,12 +254,12 @@
     }
   },
   "loyalty": {
-    "enabled": false,
+    "enabled": true,
     "mode": "monthly-purchases",
     "purchaseTarget": 8,
     "rewardTitle": "Pedido gratis",
     "orderIdField": "id",
-    "historySource": "future-orders-api"
+    "historySource": "netlify-blobs"
   },
   "baseProducts": {
     "pizzas": [

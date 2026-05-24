@@ -104,7 +104,7 @@ function normalizeLoyalty(loyalty = {}) {
     purchaseTarget: Number.isFinite(Number(loyalty.purchaseTarget)) ? Number(loyalty.purchaseTarget) : 8,
     rewardTitle: loyalty.rewardTitle || "Pedido gratis",
     orderIdField: loyalty.orderIdField || "id",
-    historySource: loyalty.historySource || "future-orders-api"
+    historySource: loyalty.historySource || "netlify-blobs"
   };
 }
 
@@ -451,6 +451,26 @@ async function submitOrderToApi(order) {
     console.info("Pedido salvo para WhatsApp. API futura indisponivel agora.", error);
     return { ok: false, error: "order_api_unavailable" };
   }
+}
+
+function submitOrderToApiWithTimeout(order, timeoutMs = 3500) {
+  return Promise.race([
+    submitOrderToApi(order),
+    new Promise((resolve) => {
+      window.setTimeout(() => resolve({ ok: false, error: "order_api_timeout" }), timeoutMs);
+    })
+  ]);
+}
+
+function applyOrderApiResult(order, result = {}) {
+  if (result.loyalty) {
+    order.loyalty = {
+      ...(order.loyalty || {}),
+      ...result.loyalty
+    };
+  }
+
+  return order;
 }
 
 function ecommerceItem(product, quantity = 1) {
@@ -984,10 +1004,38 @@ function buildOrderMessage(order) {
     order.paymentInstructions ? `Instrucao de pagamento:\n${order.paymentInstructions}` : "",
     order.estimates?.text || "",
     automationSettings().customerNextStepText || "",
+    ...loyaltyMessageLines(order.loyalty),
     "",
     `Origem: ${order.source}`,
     `Horário: ${new Date(order.createdAt).toLocaleString("pt-BR")}`
   ].filter(Boolean).join("\n");
+}
+
+function loyaltyMessageLines(loyalty = {}) {
+  if (!loyalty.enabled || !loyalty.purchaseTarget) return [];
+
+  if (loyalty.rewardUnlocked) {
+    return [
+      "",
+      "FIDELIDADE BCK:",
+      `Cliente completou ${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes.`,
+      `Premio liberado: ${loyalty.rewardTitle}.`
+    ];
+  }
+
+  if (loyalty.rewardStatus === "available") {
+    return [
+      "",
+      "FIDELIDADE BCK:",
+      `${loyalty.rewardTitle} ja esta disponivel para este telefone neste mes.`
+    ];
+  }
+
+  return [
+    "",
+    "FIDELIDADE BCK:",
+    `${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes. Faltam ${loyalty.remaining}.`
+  ];
 }
 
 function submitOrder(event) {
@@ -1000,8 +1048,12 @@ function submitOrder(event) {
 
   const formData = new FormData(els.checkoutForm);
   const order = buildOrderPayload(formData);
-  const message = buildOrderMessage(order);
-  const url = buildWhatsappUrl(message);
+  const checkoutWindow = window.open("about:blank", "_blank");
+  if (checkoutWindow) {
+    checkoutWindow.opener = null;
+    checkoutWindow.document.title = "Abrindo WhatsApp BCK";
+    checkoutWindow.document.body.innerHTML = "<p style=\"font-family: sans-serif; padding: 24px;\">Preparando pedido BCK...</p>";
+  }
 
   trackEvent("purchase", {
     transaction_id: order.id,
@@ -1023,10 +1075,20 @@ function submitOrder(event) {
 
   window.BCK_LAST_ORDER = order;
   saveLastOrder(order);
-  submitOrderToApi(order).then((result) => {
+  submitOrderToApiWithTimeout(order).then((result) => {
     window.BCK_LAST_ORDER_API_RESULT = result;
+    applyOrderApiResult(order, result);
+    window.BCK_LAST_ORDER = order;
+    saveLastOrder(order);
+
+    const url = buildWhatsappUrl(buildOrderMessage(order));
+    if (checkoutWindow && !checkoutWindow.closed) {
+      checkoutWindow.location.href = url;
+      return;
+    }
+
+    window.open(url, "_blank", "noopener");
   });
-  window.open(url, "_blank", "noopener");
 }
 
 function openCart() {

@@ -303,7 +303,7 @@
       purchaseTarget: toNumber(loyalty.purchaseTarget || 8),
       rewardTitle: loyalty.rewardTitle || "Pedido gratis",
       orderIdField: loyalty.orderIdField || "id",
-      historySource: loyalty.historySource || "future-orders-api"
+      historySource: loyalty.historySource || "netlify-blobs"
     };
   }
 
@@ -517,7 +517,7 @@
       purchaseTarget: Math.max(1, Math.round(toNumber(elements.loyaltyPurchaseTarget.value || 8))),
       rewardTitle: elements.loyaltyRewardTitle.value.trim() || "Pedido gratis",
       orderIdField: currentLoyalty.orderIdField || "id",
-      historySource: currentLoyalty.historySource || "future-orders-api"
+      historySource: currentLoyalty.historySource || "netlify-blobs"
     };
 
     markDirty("Regras do combo atualizadas. Falta salvar no site.");

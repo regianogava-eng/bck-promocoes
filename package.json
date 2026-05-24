@@ -1,0 +1,9 @@
+{
+  "name": "bck-promocoes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site de promocoes BCK Beer Chicken",
+  "dependencies": {
+    "@netlify/blobs": "^10.7.4"
+  }
+}

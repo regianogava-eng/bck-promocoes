@@ -5,6 +5,9 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+const DEFAULT_LOYALTY_TARGET = 8;
+const DEFAULT_LOYALTY_REWARD = "Pedido gratis";
+
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: JSON_HEADERS, body: "" };
@@ -32,17 +35,32 @@ exports.handler = async function handler(event) {
     receivedAt: new Date().toISOString()
   };
 
+  const loyaltyResult = await saveOrderAndUpdateLoyalty(normalizedOrder);
+  if (loyaltyResult.ok) {
+    normalizedOrder.loyalty = {
+      ...(normalizedOrder.loyalty || {}),
+      ...loyaltyResult.loyalty
+    };
+  }
+
   const webhookForward = await forwardToOrderWebhook(normalizedOrder);
   const whatsappNotification = await notifyStore(normalizedOrder);
+  const customerLoyaltyNotification = await notifyCustomerLoyalty(normalizedOrder);
 
   return json(200, {
     ok: true,
     orderId,
+    loyalty: normalizedOrder.loyalty || null,
+    orderSaved: loyaltyResult.orderSaved,
+    loyaltySaved: loyaltyResult.loyaltySaved,
     webhookForwarded: webhookForward.ok,
     whatsappNotificationSent: whatsappNotification.ok,
+    customerLoyaltyNotificationSent: customerLoyaltyNotification.ok,
     notes: [
+      loyaltyResult.error,
       webhookForward.error,
-      whatsappNotification.error
+      whatsappNotification.error,
+      customerLoyaltyNotification.error
     ].filter(Boolean)
   });
 };
@@ -56,6 +74,184 @@ function isValidOrder(order) {
     && order.items.length > 0
     && order.totals
     && Number(order.totals.total) >= 0;
+}
+
+async function saveOrderAndUpdateLoyalty(order) {
+  const phone = onlyDigits(order.customer.phone);
+  if (!phone) {
+    return { ok: false, orderSaved: false, loyaltySaved: false, error: "customer_phone_missing" };
+  }
+
+  const loyaltySettings = normalizeLoyaltySettings(order.loyalty);
+  const month = orderMonth(order);
+  const orderRecord = orderHistoryRecord(order, phone, month);
+  const initialLoyalty = loyaltySnapshot({
+    phone,
+    month,
+    orders: [orderRecord],
+    settings: loyaltySettings,
+    previousCount: 0
+  });
+
+  try {
+    const ordersStore = await getBlobStore("bck-orders");
+    const loyaltyStore = await getBlobStore("bck-loyalty");
+
+    await ordersStore.setJSON(`orders/${order.id}`, orderRecord, {
+      metadata: {
+        phone,
+        month,
+        total: String(Number(order.totals.total) || 0)
+      }
+    });
+
+    const loyaltyKey = `customers/${phone}/${month}`;
+    const existing = await loyaltyStore.get(loyaltyKey, { consistency: "strong", type: "json" });
+    const history = normalizeMonthlyHistory(existing, phone, month);
+    const previousCount = history.orders.length;
+
+    if (!history.orders.some((item) => item.id === order.id)) {
+      history.orders.push(orderRecord);
+    }
+
+    history.customerName = order.customer.name || history.customerName || "";
+    history.updatedAt = new Date().toISOString();
+
+    const nextLoyalty = loyaltySnapshot({
+      phone,
+      month,
+      orders: history.orders,
+      settings: loyaltySettings,
+      previousCount
+    });
+
+    history.loyalty = nextLoyalty;
+
+    await loyaltyStore.setJSON(loyaltyKey, history, {
+      metadata: {
+        phone,
+        month,
+        count: String(nextLoyalty.purchaseCount),
+        rewardStatus: nextLoyalty.rewardStatus
+      }
+    });
+
+    return {
+      ok: true,
+      orderSaved: true,
+      loyaltySaved: true,
+      loyalty: nextLoyalty
+    };
+  } catch (error) {
+    console.error("Loyalty persistence failed", error);
+    return {
+      ok: false,
+      orderSaved: false,
+      loyaltySaved: false,
+      loyalty: initialLoyalty,
+      error: "loyalty_storage_unavailable"
+    };
+  }
+}
+
+async function getBlobStore(name) {
+  const { getStore } = await import("@netlify/blobs");
+  return getStore({ name, consistency: "strong" });
+}
+
+function normalizeMonthlyHistory(existing, phone, month) {
+  return {
+    phone,
+    month,
+    customerName: existing?.customerName || "",
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: existing?.updatedAt || new Date().toISOString(),
+    orders: Array.isArray(existing?.orders) ? existing.orders : [],
+    loyalty: existing?.loyalty || null
+  };
+}
+
+function normalizeLoyaltySettings(settings = {}) {
+  const target = Number(settings.purchaseTarget || process.env.LOYALTY_PURCHASE_TARGET || DEFAULT_LOYALTY_TARGET);
+  return {
+    enabled: settings.enabled !== false,
+    mode: settings.mode || "monthly-purchases",
+    purchaseTarget: Number.isFinite(target) && target > 0 ? Math.round(target) : DEFAULT_LOYALTY_TARGET,
+    rewardTitle: settings.rewardTitle || process.env.LOYALTY_REWARD_TITLE || DEFAULT_LOYALTY_REWARD,
+    orderIdField: settings.orderIdField || "id",
+    historySource: "netlify-blobs"
+  };
+}
+
+function loyaltySnapshot({ phone, month, orders, settings, previousCount }) {
+  const purchaseCount = orders.length;
+  const purchaseTarget = settings.purchaseTarget || DEFAULT_LOYALTY_TARGET;
+  const remaining = Math.max(0, purchaseTarget - purchaseCount);
+  const rewardUnlocked = settings.enabled !== false && previousCount < purchaseTarget && purchaseCount >= purchaseTarget;
+  const rewardAvailable = settings.enabled !== false && purchaseCount >= purchaseTarget;
+
+  return {
+    enabled: settings.enabled !== false,
+    customerId: phone,
+    month,
+    mode: settings.mode,
+    purchaseCount,
+    purchaseTarget,
+    remaining,
+    rewardTitle: settings.rewardTitle || DEFAULT_LOYALTY_REWARD,
+    rewardStatus: rewardAvailable ? "available" : "progress",
+    rewardUnlocked,
+    unlockedAt: rewardUnlocked ? new Date().toISOString() : null,
+    message: loyaltyMessage({
+      purchaseCount,
+      purchaseTarget,
+      remaining,
+      rewardTitle: settings.rewardTitle || DEFAULT_LOYALTY_REWARD,
+      rewardUnlocked,
+      rewardAvailable
+    }),
+    historySource: "netlify-blobs"
+  };
+}
+
+function loyaltyMessage({ purchaseCount, purchaseTarget, remaining, rewardTitle, rewardUnlocked, rewardAvailable }) {
+  if (rewardUnlocked) {
+    return `FIDELIDADE BCK: cliente completou ${purchaseCount}/${purchaseTarget} pedidos no mes e liberou ${rewardTitle}.`;
+  }
+
+  if (rewardAvailable) {
+    return `FIDELIDADE BCK: cliente ja tem ${rewardTitle} disponivel neste mes.`;
+  }
+
+  return `FIDELIDADE BCK: cliente esta em ${purchaseCount}/${purchaseTarget} pedidos no mes. Faltam ${remaining}.`;
+}
+
+function orderHistoryRecord(order, phone, month) {
+  return {
+    id: order.id,
+    phone,
+    month,
+    customerName: order.customer.name || "",
+    customerPhone: order.customer.phone || "",
+    createdAt: order.createdAt || order.receivedAt || new Date().toISOString(),
+    receivedAt: order.receivedAt || new Date().toISOString(),
+    total: Number(order.totals.total) || 0,
+    subtotal: Number(order.totals.subtotal) || 0,
+    payment: order.payment || "",
+    itemCount: Array.isArray(order.items)
+      ? order.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0)
+      : 0,
+    items: Array.isArray(order.items)
+      ? order.items.map((item) => ({
+          id: item.id,
+          type: item.type || "catalog-product",
+          title: item.title,
+          quantity: Number(item.quantity) || 0,
+          subtotal: Number(item.subtotal) || 0,
+          components: Array.isArray(item.components) ? item.components : []
+        }))
+      : []
+  };
 }
 
 async function forwardToOrderWebhook(order) {
@@ -85,6 +281,46 @@ async function notifyStore(order) {
     return { ok: false, error: "WhatsApp notification env not configured" };
   }
 
+  return sendTextMessage({
+    token,
+    phoneNumberId,
+    apiVersion,
+    to,
+    body: formatOrderMessage(order),
+    previewUrl: false,
+    errorLabel: "store_notification_failed"
+  });
+}
+
+async function notifyCustomerLoyalty(order) {
+  const enabled = process.env.LOYALTY_SEND_CUSTOMER_WHATSAPP === "true";
+  const loyalty = order.loyalty || {};
+
+  if (!enabled || !loyalty.rewardUnlocked) {
+    return { ok: false, error: enabled ? "loyalty_reward_not_unlocked" : "LOYALTY_SEND_CUSTOMER_WHATSAPP disabled" };
+  }
+
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const to = onlyDigits(order.customer.phone || "");
+  const apiVersion = process.env.WHATSAPP_API_VERSION || "v25.0";
+
+  if (!token || !phoneNumberId || !to) {
+    return { ok: false, error: "WhatsApp customer env not configured" };
+  }
+
+  return sendTextMessage({
+    token,
+    phoneNumberId,
+    apiVersion,
+    to,
+    body: formatCustomerLoyaltyMessage(order),
+    previewUrl: false,
+    errorLabel: "customer_loyalty_notification_failed"
+  });
+}
+
+async function sendTextMessage({ token, phoneNumberId, apiVersion, to, body, previewUrl, errorLabel }) {
   const response = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
     method: "POST",
     headers: {
@@ -97,16 +333,16 @@ async function notifyStore(order) {
       to,
       type: "text",
       text: {
-        preview_url: false,
-        body: formatOrderMessage(order)
+        preview_url: Boolean(previewUrl),
+        body
       }
     })
   });
 
   if (!response.ok) {
     const detail = await response.text();
-    console.error("Store notification failed", detail);
-    return { ok: false, error: "store_notification_failed" };
+    console.error(errorLabel, detail);
+    return { ok: false, error: errorLabel };
   }
 
   return { ok: true };
@@ -136,14 +372,58 @@ function formatOrderMessage(order) {
     `Pagamento: ${order.payment}`,
     order.paymentInstructions || "",
     "",
+    ...loyaltyMessageLines(order.loyalty),
+    "",
     `Recebido: ${new Date(order.receivedAt || order.createdAt || Date.now()).toLocaleString("pt-BR")}`
   ].filter(Boolean).join("\n");
+}
+
+function loyaltyMessageLines(loyalty = {}) {
+  if (!loyalty.enabled || !loyalty.purchaseTarget) return [];
+
+  if (loyalty.rewardUnlocked) {
+    return [
+      "FIDELIDADE:",
+      `Cliente completou ${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes.`,
+      `Premio liberado: ${loyalty.rewardTitle}.`
+    ];
+  }
+
+  if (loyalty.rewardStatus === "available") {
+    return [
+      "FIDELIDADE:",
+      `${loyalty.rewardTitle} ja esta disponivel para este telefone neste mes.`
+    ];
+  }
+
+  return [
+    "FIDELIDADE:",
+    `${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes. Faltam ${loyalty.remaining}.`
+  ];
+}
+
+function formatCustomerLoyaltyMessage(order) {
+  const loyalty = order.loyalty || {};
+  return [
+    `Boa! Aqui e a ${process.env.BCK_STORE_NAME || "BCK Beer Chicken"}.`,
+    "",
+    `Voce completou ${loyalty.purchaseCount}/${loyalty.purchaseTarget} pedidos no mes e ganhou: ${loyalty.rewardTitle}.`,
+    "",
+    "Para usar, responda FIDELIDADE nesta conversa com seu nome e telefone.",
+    `Pedido que liberou: #${order.id}`
+  ].join("\n");
 }
 
 function createOrderId() {
   const stamp = new Date().toISOString().replace(/\D/g, "").slice(2, 14);
   const random = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `BCK-${stamp}-${random}`;
+}
+
+function orderMonth(order) {
+  const date = new Date(order.createdAt || order.receivedAt || Date.now());
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  return validDate.toISOString().slice(0, 7);
 }
 
 function onlyDigits(value) {
