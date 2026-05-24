@@ -211,6 +211,56 @@
       "sortScore": 10
     }
   ],
+  "comboBuilder": {
+    "enabled": true,
+    "title": "Monte seu Combo",
+    "description": "Escolha pizza, frango, batata e bebida. O total e calculado na hora.",
+    "groups": [
+      {
+        "key": "pizza",
+        "label": "Pizza",
+        "source": "pizzas",
+        "required": true,
+        "itemIds": ["pizza-pequena"]
+      },
+      {
+        "key": "frango",
+        "label": "Frango",
+        "source": "frangos",
+        "required": true,
+        "itemIds": ["frango-file-500"]
+      },
+      {
+        "key": "batata",
+        "label": "Batata",
+        "source": "batatas",
+        "required": true,
+        "itemIds": ["batata-cheddar-bacon"]
+      },
+      {
+        "key": "bebida",
+        "label": "Bebida",
+        "source": "bebidas",
+        "required": true,
+        "itemIds": ["refri-gelado"]
+      }
+    ],
+    "freeGift": {
+      "enabled": true,
+      "threshold": 100,
+      "title": "Refri gratis",
+      "description": "Desbloqueado em combos montados acima de R$100.",
+      "itemId": "refri-gelado"
+    }
+  },
+  "loyalty": {
+    "enabled": false,
+    "mode": "monthly-purchases",
+    "purchaseTarget": 8,
+    "rewardTitle": "Pedido gratis",
+    "orderIdField": "id",
+    "historySource": "future-orders-api"
+  },
   "baseProducts": {
     "pizzas": [
       {

@@ -62,6 +62,71 @@
           </article>
         </section>
 
+        <section class="settings-panel" aria-labelledby="comboRulesTitle">
+          <div class="settings-head">
+            <div>
+              <p class="eyebrow">Monte seu Combo</p>
+              <h2 id="comboRulesTitle">Regras do combo e brindes.</h2>
+            </div>
+            <button class="btn secondary" type="button" id="applyComboSettingsButton">Aplicar regras</button>
+          </div>
+
+          <form class="settings-grid" id="comboSettingsForm">
+            <label class="switch span-2">
+              <input id="comboBuilderEnabled" type="checkbox">
+              <span>Mostrar Monte seu Combo no site</span>
+            </label>
+
+            <label>
+              Titulo no site
+              <input id="comboBuilderTitle" type="text" placeholder="Monte seu Combo">
+            </label>
+
+            <label>
+              Texto curto
+              <input id="comboBuilderDescription" type="text" placeholder="Escolha pizza, frango, batata e bebida">
+            </label>
+
+            <label class="switch">
+              <input id="comboGiftEnabled" type="checkbox">
+              <span>Ativar brinde</span>
+            </label>
+
+            <label>
+              Valor minimo do brinde
+              <input id="comboGiftThreshold" type="number" min="0" step="0.01" placeholder="100">
+            </label>
+
+            <label>
+              Nome do brinde
+              <input id="comboGiftTitle" type="text" placeholder="Refri gratis">
+            </label>
+
+            <label>
+              Mensagem do brinde
+              <input id="comboGiftDescription" type="text" placeholder="Desbloqueado em combos acima de R$100">
+            </label>
+
+            <fieldset class="span-2">
+              <legend>Fidelidade futura</legend>
+              <div class="settings-grid compact">
+                <label class="switch">
+                  <input id="loyaltyEnabled" type="checkbox">
+                  <span>Ativar quando tiver historico</span>
+                </label>
+                <label>
+                  Compras no mes
+                  <input id="loyaltyPurchaseTarget" type="number" min="1" step="1" placeholder="8">
+                </label>
+                <label>
+                  Premio
+                  <input id="loyaltyRewardTitle" type="text" placeholder="Pedido gratis">
+                </label>
+              </div>
+            </fieldset>
+          </form>
+        </section>
+
         <section class="tool-row">
           <label class="search-box">
             <span>Buscar</span>

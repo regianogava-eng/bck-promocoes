@@ -1,10 +1,18 @@
 const config = window.BCK_CONFIG;
+const COMBO_BUILDER_FALLBACK_GROUPS = [
+  { key: "pizza", label: "Pizza", source: "pizzas", required: true },
+  { key: "frango", label: "Frango", source: "frangos", required: true },
+  { key: "batata", label: "Batata", source: "batatas", required: true },
+  { key: "bebida", label: "Bebida", source: "bebidas", required: true }
+];
+
 let catalog = normalizeCatalog(window.BCK_CATALOG || { categories: [], products: [] });
 
 const state = {
   selectedCategory: "todos",
   sort: "featured",
-  cart: loadCart()
+  cart: loadCart(),
+  comboBuilder: {}
 };
 
 const moneyFormatter = new Intl.NumberFormat("pt-BR", {
@@ -53,7 +61,50 @@ function normalizeCatalog(rawCatalog = {}) {
   return {
     ...rawCatalog,
     categories: Array.isArray(rawCatalog.categories) ? rawCatalog.categories : [],
+    comboBuilder: normalizeComboBuilder(rawCatalog.comboBuilder),
+    loyalty: normalizeLoyalty(rawCatalog.loyalty),
     products: flatProducts.length ? flatProducts : groupedProducts
+  };
+}
+
+function normalizeComboBuilder(settings = {}) {
+  const groups = Array.isArray(settings.groups) && settings.groups.length
+    ? settings.groups
+    : COMBO_BUILDER_FALLBACK_GROUPS;
+
+  return {
+    enabled: settings.enabled !== false,
+    title: settings.title || "Monte seu Combo",
+    description: settings.description || "Escolha pizza, frango, batata e bebida. O total e calculado na hora.",
+    groups: groups.map((group, index) => ({
+      key: group.key || COMBO_BUILDER_FALLBACK_GROUPS[index]?.key || `item-${index + 1}`,
+      label: group.label || group.title || COMBO_BUILDER_FALLBACK_GROUPS[index]?.label || "Item",
+      source: group.source || COMBO_BUILDER_FALLBACK_GROUPS[index]?.source || group.key,
+      required: group.required !== false,
+      itemIds: Array.isArray(group.itemIds) ? group.itemIds : []
+    })),
+    freeGift: normalizeFreeGift(settings.freeGift)
+  };
+}
+
+function normalizeFreeGift(freeGift = {}) {
+  return {
+    enabled: freeGift.enabled !== false,
+    threshold: Number.isFinite(Number(freeGift.threshold)) ? Number(freeGift.threshold) : 100,
+    title: freeGift.title || "Refri gratis",
+    description: freeGift.description || "Desbloqueado em combos montados acima de R$100.",
+    itemId: freeGift.itemId || "refri-gelado"
+  };
+}
+
+function normalizeLoyalty(loyalty = {}) {
+  return {
+    enabled: Boolean(loyalty.enabled),
+    mode: loyalty.mode || "monthly-purchases",
+    purchaseTarget: Number.isFinite(Number(loyalty.purchaseTarget)) ? Number(loyalty.purchaseTarget) : 8,
+    rewardTitle: loyalty.rewardTitle || "Pedido gratis",
+    orderIdField: loyalty.orderIdField || "id",
+    historySource: loyalty.historySource || "future-orders-api"
   };
 }
 
@@ -64,6 +115,14 @@ const els = {
   countdown: document.querySelector("[data-countdown]"),
   categoryRail: document.querySelector("[data-category-rail]"),
   productGrid: document.querySelector("[data-product-grid]"),
+  comboBuilderSection: document.querySelector("[data-combo-builder-section]"),
+  comboBuilderTitle: document.querySelector("[data-combo-builder-title]"),
+  comboBuilderDescription: document.querySelector("[data-combo-builder-description]"),
+  comboOptions: document.querySelector("[data-combo-options]"),
+  comboTotal: document.querySelector("[data-combo-total]"),
+  comboGiftStatus: document.querySelector("[data-combo-gift-status]"),
+  comboSummary: document.querySelector("[data-combo-summary]"),
+  comboAddButton: document.querySelector("[data-add-custom-combo]"),
   comboGrid: document.querySelector("[data-combo-grid]"),
   visibleCount: document.querySelector("[data-visible-count]"),
   sortSelect: document.querySelector("[data-sort-select]"),
@@ -118,6 +177,118 @@ function productImage(product) {
   return product.image || "assets/images/hero-bck-feast.webp";
 }
 
+function comboBuilderSettings() {
+  return catalog.comboBuilder || normalizeComboBuilder();
+}
+
+function loyaltySettings() {
+  return catalog.loyalty || normalizeLoyalty();
+}
+
+function comboBuilderGroups() {
+  return comboBuilderSettings().groups || COMBO_BUILDER_FALLBACK_GROUPS;
+}
+
+function baseProductsForGroup(group) {
+  const source = group.source || group.key;
+  const items = catalog.baseProducts && Array.isArray(catalog.baseProducts[source])
+    ? catalog.baseProducts[source]
+    : [];
+  const allowedIds = Array.isArray(group.itemIds) && group.itemIds.length ? new Set(group.itemIds) : null;
+
+  return items.filter((item) => {
+    return item
+      && item.active !== false
+      && (!allowedIds || allowedIds.has(item.id));
+  });
+}
+
+function comboGroupState(group) {
+  const current = state.comboBuilder[group.key];
+
+  if (current && typeof current === "object") {
+    return {
+      itemId: current.itemId || "",
+      option: current.option || ""
+    };
+  }
+
+  return {
+    itemId: typeof current === "string" ? current : "",
+    option: ""
+  };
+}
+
+function setComboGroupState(group, itemId, option = "") {
+  const item = baseProductsForGroup(group).find((candidate) => candidate.id === itemId);
+  const options = Array.isArray(item?.options) ? item.options : [];
+  state.comboBuilder[group.key] = {
+    itemId,
+    option: option || options[0] || ""
+  };
+}
+
+function ensureComboBuilderSelection() {
+  comboBuilderGroups().forEach((group) => {
+    const items = baseProductsForGroup(group);
+    if (!items.length) {
+      state.comboBuilder[group.key] = { itemId: "", option: "" };
+      return;
+    }
+
+    const current = comboGroupState(group);
+    const selected = items.find((item) => item.id === current.itemId) || items[0];
+    const options = Array.isArray(selected.options) ? selected.options : [];
+    state.comboBuilder[group.key] = {
+      itemId: selected.id,
+      option: options.includes(current.option) ? current.option : options[0] || ""
+    };
+  });
+}
+
+function selectedComboItems() {
+  return comboBuilderGroups().map((group) => {
+    const current = comboGroupState(group);
+    const item = baseProductsForGroup(group).find((candidate) => candidate.id === current.itemId);
+    return {
+      group,
+      item,
+      option: current.option
+    };
+  });
+}
+
+function comboSelectionComplete() {
+  return selectedComboItems().every((selection) => {
+    return selection.item || selection.group.required === false;
+  });
+}
+
+function comboBuilderSubtotal() {
+  return selectedComboItems().reduce((total, selection) => {
+    return selection.item ? total + Number(selection.item.price || 0) : total;
+  }, 0);
+}
+
+function comboBuilderGift(subtotal = comboBuilderSubtotal()) {
+  const freeGift = comboBuilderSettings().freeGift || {};
+
+  if (freeGift.enabled === false || subtotal < Number(freeGift.threshold || 0)) {
+    return null;
+  }
+
+  const baseGift = Object.values(catalog.baseProducts || {})
+    .flat()
+    .find((item) => item && item.id === freeGift.itemId);
+
+  return {
+    id: freeGift.itemId || "brinde",
+    title: freeGift.title || baseGift?.title || "Brinde",
+    description: freeGift.description || baseGift?.description || "",
+    price: 0
+  };
+}
+
 function hasOriginalPrice(product) {
   return Number(product.originalPrice) > Number(product.promoPrice);
 }
@@ -146,7 +317,40 @@ function sortedProducts(products) {
 }
 
 function categoryLabel(id) {
-  return catalog.categories.find((category) => category.id === id)?.title || "Promoção";
+  const category = catalog.categories.find((item) => item.id === id);
+  return category?.title || category?.label || "Promoção";
+}
+
+function cartItemKey(item) {
+  return item.cartId || item.id;
+}
+
+function cartItemDetails(item) {
+  if (!item) return null;
+
+  if (item.type === "custom-combo") {
+    return {
+      id: item.id || item.cartId,
+      type: item.type,
+      title: item.title || "Combo montado",
+      unitPrice: Number(item.unitPrice || 0),
+      components: Array.isArray(item.components) ? item.components : [],
+      selections: Array.isArray(item.selections) ? item.selections : [],
+      gifts: Array.isArray(item.gifts) ? item.gifts : []
+    };
+  }
+
+  const product = productById(item.id);
+  if (!product) return null;
+
+  return {
+    id: product.id,
+    type: "catalog-product",
+    title: product.title,
+    unitPrice: Number(product.promoPrice || 0),
+    components: productComponents(product),
+    product
+  };
 }
 
 function cartCount() {
@@ -155,8 +359,8 @@ function cartCount() {
 
 function cartSubtotal() {
   return state.cart.reduce((total, item) => {
-    const product = productById(item.id);
-    return product ? total + product.promoPrice * item.quantity : total;
+    const details = cartItemDetails(item);
+    return details ? total + details.unitPrice * item.quantity : total;
   }, 0);
 }
 
@@ -257,6 +461,19 @@ function ecommerceItem(product, quantity = 1) {
     price: product.promoPrice,
     discount: savings(product),
     quantity
+  };
+}
+
+function ecommerceCartItem(item) {
+  const details = cartItemDetails(item);
+  if (!details) return null;
+
+  return {
+    item_id: details.id,
+    item_name: details.title,
+    item_category: details.type === "custom-combo" ? "combo-montado" : productCategories(details.product)[0],
+    price: details.unitPrice,
+    quantity: item.quantity
   };
 }
 
@@ -375,6 +592,113 @@ function renderProducts() {
   });
 }
 
+function renderComboBuilder() {
+  if (!els.comboBuilderSection) return;
+
+  const settings = comboBuilderSettings();
+  if (settings.enabled === false) {
+    els.comboBuilderSection.hidden = true;
+    return;
+  }
+
+  ensureComboBuilderSelection();
+  els.comboBuilderSection.hidden = false;
+  els.comboBuilderTitle.textContent = settings.title || "Monte seu Combo";
+  els.comboBuilderDescription.textContent = settings.description || "";
+  els.comboOptions.textContent = "";
+
+  selectedComboItems().forEach((selection) => {
+    const items = baseProductsForGroup(selection.group);
+    const choice = document.createElement("article");
+    choice.className = "combo-choice";
+
+    const heading = document.createElement("div");
+    heading.className = "combo-choice__head";
+
+    const title = document.createElement("strong");
+    title.textContent = selection.group.label;
+
+    const price = document.createElement("span");
+    price.textContent = selection.item ? formatMoney(selection.item.price || 0) : "Sem item";
+
+    heading.append(title, price);
+
+    const itemSelect = document.createElement("select");
+    itemSelect.dataset.comboSelect = selection.group.key;
+    itemSelect.setAttribute("aria-label", selection.group.label);
+    itemSelect.disabled = !items.length;
+
+    items.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = `${item.title} - ${formatMoney(item.price || 0)}`;
+      option.selected = item.id === selection.item?.id;
+      itemSelect.appendChild(option);
+    });
+
+    if (!items.length) {
+      const option = document.createElement("option");
+      option.textContent = "Cadastre um item no catalogo";
+      itemSelect.appendChild(option);
+    }
+
+    choice.append(heading, itemSelect);
+
+    const options = Array.isArray(selection.item?.options) ? selection.item.options : [];
+    if (options.length) {
+      const optionSelect = document.createElement("select");
+      optionSelect.dataset.comboOption = selection.group.key;
+      optionSelect.setAttribute("aria-label", `${selection.group.label} opcao`);
+
+      options.forEach((name) => {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        option.selected = name === selection.option;
+        optionSelect.appendChild(option);
+      });
+
+      choice.appendChild(optionSelect);
+    }
+
+    if (selection.item?.description) {
+      const description = document.createElement("p");
+      description.textContent = selection.item.description;
+      choice.appendChild(description);
+    }
+
+    els.comboOptions.appendChild(choice);
+  });
+
+  const subtotal = comboBuilderSubtotal();
+  const gift = comboBuilderGift(subtotal);
+  const freeGift = settings.freeGift || {};
+  const threshold = Number(freeGift.threshold || 0);
+  els.comboTotal.textContent = formatMoney(subtotal);
+  els.comboAddButton.disabled = !comboSelectionComplete();
+
+  if (freeGift.enabled === false) {
+    els.comboGiftStatus.textContent = "Brinde pausado no admin.";
+  } else if (gift) {
+    els.comboGiftStatus.textContent = `${gift.title} desbloqueado.`;
+  } else {
+    els.comboGiftStatus.textContent = `Faltam ${formatMoney(Math.max(0, threshold - subtotal))} para liberar ${freeGift.title || "brinde"}.`;
+  }
+
+  const summary = selectedComboItems()
+    .filter((selection) => selection.item)
+    .map((selection) => {
+      const option = selection.option ? ` (${selection.option})` : "";
+      return `${selection.group.label}: ${selection.item.title}${option}`;
+    });
+
+  if (gift) {
+    summary.push(`Brinde: ${gift.title}`);
+  }
+
+  els.comboSummary.textContent = summary.join(" + ");
+}
+
 function renderCombos() {
   els.comboGrid.textContent = "";
   activeProducts()
@@ -418,11 +742,78 @@ function createProductCard(product) {
   return card;
 }
 
+function buildCustomComboCartItem() {
+  if (!comboSelectionComplete()) return null;
+
+  const settings = comboBuilderSettings();
+  const subtotal = comboBuilderSubtotal();
+  const gift = comboBuilderGift(subtotal);
+  const selections = selectedComboItems()
+    .filter((selection) => selection.item)
+    .map((selection) => ({
+      group: selection.group.key,
+      groupLabel: selection.group.label,
+      id: selection.item.id,
+      title: selection.item.title,
+      option: selection.option || "",
+      price: Number(selection.item.price || 0)
+    }));
+  const components = selections.map((selection) => {
+    const option = selection.option ? ` (${selection.option})` : "";
+    return `${selection.groupLabel}: ${selection.title}${option}`;
+  });
+  const gifts = gift ? [gift] : [];
+
+  gifts.forEach((item) => {
+    components.push(`Brinde: ${item.title}`);
+  });
+
+  const cartId = `custom-combo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  return {
+    id: "combo-montado",
+    cartId,
+    type: "custom-combo",
+    title: settings.title || "Combo montado",
+    quantity: 1,
+    unitPrice: subtotal,
+    components,
+    selections,
+    gifts,
+    rules: {
+      freeGiftThreshold: settings.freeGift?.threshold || 0,
+      freeGiftUnlocked: Boolean(gift)
+    }
+  };
+}
+
+function addCustomComboToCart() {
+  const item = buildCustomComboCartItem();
+  if (!item) return;
+
+  state.cart.push(item);
+  saveCart();
+  renderCart();
+  openCart();
+  trackEvent("add_to_cart", {
+    value: item.unitPrice,
+    ecommerce: {
+      items: [{
+        item_id: item.id,
+        item_name: item.title,
+        item_category: "combo-montado",
+        price: item.unitPrice,
+        quantity: 1
+      }]
+    }
+  });
+}
+
 function addToCart(productId, quantity = 1) {
   const product = productById(productId);
   if (!product || !product.active) return;
 
-  const current = state.cart.find((item) => item.id === productId);
+  const current = state.cart.find((item) => item.id === productId && item.type !== "custom-combo");
   if (current) {
     current.quantity += quantity;
   } else {
@@ -440,21 +831,21 @@ function addToCart(productId, quantity = 1) {
   });
 }
 
-function changeQuantity(productId, delta) {
-  const current = state.cart.find((item) => item.id === productId);
+function changeQuantity(itemKey, delta) {
+  const current = state.cart.find((item) => cartItemKey(item) === itemKey);
   if (!current) return;
 
   current.quantity += delta;
   if (current.quantity <= 0) {
-    state.cart = state.cart.filter((item) => item.id !== productId);
+    state.cart = state.cart.filter((item) => cartItemKey(item) !== itemKey);
   }
 
   saveCart();
   renderCart();
 }
 
-function removeFromCart(productId) {
-  state.cart = state.cart.filter((item) => item.id !== productId);
+function removeFromCart(itemKey) {
+  state.cart = state.cart.filter((item) => cartItemKey(item) !== itemKey);
   saveCart();
   renderCart();
 }
@@ -463,17 +854,18 @@ function renderCart() {
   els.cartList.textContent = "";
 
   state.cart.forEach((item) => {
-    const product = productById(item.id);
-    if (!product) return;
+    const details = cartItemDetails(item);
+    if (!details) return;
 
     const row = els.cartItemTemplate.content.firstElementChild.cloneNode(true);
-    row.querySelector("h3").textContent = product.title;
-    row.querySelector("p").textContent = productComponents(product).join(" + ");
-    row.querySelector(".cart-item__subtotal").textContent = formatMoney(product.promoPrice * item.quantity);
+    const key = cartItemKey(item);
+    row.querySelector("h3").textContent = details.title;
+    row.querySelector("p").textContent = details.components.join(" + ");
+    row.querySelector(".cart-item__subtotal").textContent = formatMoney(details.unitPrice * item.quantity);
     row.querySelector("output").textContent = item.quantity;
-    row.querySelector("[data-decrease-item]").dataset.decreaseItem = product.id;
-    row.querySelector("[data-increase-item]").dataset.increaseItem = product.id;
-    row.querySelector("[data-remove-item]").dataset.removeItem = product.id;
+    row.querySelector("[data-decrease-item]").dataset.decreaseItem = key;
+    row.querySelector("[data-increase-item]").dataset.increaseItem = key;
+    row.querySelector("[data-remove-item]").dataset.removeItem = key;
     els.cartList.appendChild(row);
   });
 
@@ -503,23 +895,29 @@ function renderCart() {
 function buildOrderPayload(formData) {
   const payment = formData.get("payment");
   const estimate = deliveryEstimate();
+  const orderId = createOrderId();
+  const loyalty = loyaltySettings();
   const items = state.cart
     .map((item) => {
-      const product = productById(item.id);
-      if (!product) return null;
+      const details = cartItemDetails(item);
+      if (!details) return null;
+
       return {
-        id: product.id,
-        title: product.title,
+        id: details.id,
+        type: details.type,
+        title: details.title,
         quantity: item.quantity,
-        unitPrice: product.promoPrice,
-        subtotal: product.promoPrice * item.quantity,
-        components: productComponents(product)
+        unitPrice: details.unitPrice,
+        subtotal: details.unitPrice * item.quantity,
+        components: details.components,
+        selections: details.selections || [],
+        gifts: details.gifts || []
       };
     })
     .filter(Boolean);
 
   return {
-    id: createOrderId(),
+    id: orderId,
     source: "site-promocoes-bck",
     sourceUrl: window.location.href,
     status: "received",
@@ -542,18 +940,28 @@ function buildOrderPayload(formData) {
       orderApiUrlConfigured: Boolean(configuredOrderApiUrl()),
       whatsappCloudApiConfigured: Boolean(automationSettings().apiReady?.whatsappCloudApi)
     },
+    loyalty: {
+      enabled: Boolean(loyalty.enabled),
+      mode: loyalty.mode,
+      purchaseTarget: loyalty.purchaseTarget,
+      rewardTitle: loyalty.rewardTitle,
+      orderIdField: loyalty.orderIdField,
+      historySource: loyalty.historySource,
+      orderId
+    },
     items
   };
 }
 
 function buildOrderMessage(order) {
   const itemLines = order.items.map((item) => {
+    const components = Array.isArray(item.components) ? item.components : [];
     return [
       `${item.quantity}x ${item.title}`,
-      `Itens: ${item.components.join(" + ")}`,
+      components.length ? `${item.type === "custom-combo" ? "Combo montado" : "Itens"}: ${components.join(" + ")}` : "",
       `Unitário: ${formatMoney(item.unitPrice)}`,
       `Subtotal: ${formatMoney(item.subtotal)}`
-    ].join("\n");
+    ].filter(Boolean).join("\n");
   });
 
   return [
@@ -638,10 +1046,7 @@ function openCheckout() {
   trackEvent("begin_checkout", {
     value: cartTotal(),
     ecommerce: {
-      items: state.cart.map((item) => {
-        const product = productById(item.id);
-        return product ? ecommerceItem(product, item.quantity) : null;
-      }).filter(Boolean)
+      items: state.cart.map(ecommerceCartItem).filter(Boolean)
     }
   });
 
@@ -701,6 +1106,11 @@ function bindEvents() {
     const addButton = event.target.closest("[data-add-item]");
     if (addButton) {
       addToCart(addButton.dataset.addItem);
+      return;
+    }
+
+    if (event.target.closest("[data-add-custom-combo]")) {
+      addCustomComboToCart();
       return;
     }
 
@@ -766,6 +1176,28 @@ function bindEvents() {
     }
   });
 
+  document.addEventListener("change", (event) => {
+    const comboSelect = event.target.closest("[data-combo-select]");
+    if (comboSelect) {
+      const group = comboBuilderGroups().find((item) => item.key === comboSelect.dataset.comboSelect);
+      if (group) {
+        setComboGroupState(group, comboSelect.value);
+        renderComboBuilder();
+      }
+      return;
+    }
+
+    const comboOption = event.target.closest("[data-combo-option]");
+    if (comboOption) {
+      const group = comboBuilderGroups().find((item) => item.key === comboOption.dataset.comboOption);
+      if (group) {
+        const current = comboGroupState(group);
+        setComboGroupState(group, current.itemId, comboOption.value);
+        renderComboBuilder();
+      }
+    }
+  });
+
   els.sortSelect.addEventListener("change", () => {
     state.sort = els.sortSelect.value;
     renderProducts();
@@ -780,6 +1212,7 @@ function exposeIntegrationHooks() {
     catalog,
     getCart: () => [...state.cart],
     addToCart,
+    addCustomComboToCart,
     removeFromCart,
     changeQuantity,
     buildOrderPayload,
@@ -791,11 +1224,13 @@ function exposeIntegrationHooks() {
 
 async function init() {
   await loadCatalogData();
+  ensureComboBuilderSelection();
   updateTodayLabel();
   duplicateTicker();
   renderFeaturedDeal();
   renderCategories();
   renderProducts();
+  renderComboBuilder();
   renderCombos();
   renderCart();
   bindEvents();

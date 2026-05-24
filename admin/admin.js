@@ -5,6 +5,12 @@
   var CATALOG_PATH = "data/catalog.json";
   var IMAGE_DIR = "assets/images";
   var GIT_ROOT = "/.netlify/git/github";
+  var DEFAULT_COMBO_GROUPS = [
+    { key: "pizza", label: "Pizza", source: "pizzas", required: true, itemIds: ["pizza-pequena"] },
+    { key: "frango", label: "Frango", source: "frangos", required: true, itemIds: ["frango-file-500"] },
+    { key: "batata", label: "Batata", source: "batatas", required: true, itemIds: ["batata-cheddar-bacon"] },
+    { key: "bebida", label: "Bebida", source: "bebidas", required: true, itemIds: ["refri-gelado"] }
+  ];
 
   var state = {
     catalog: null,
@@ -43,6 +49,18 @@
     elements.activeCount = document.getElementById("activeCount");
     elements.comboCount = document.getElementById("comboCount");
     elements.featuredCount = document.getElementById("featuredCount");
+    elements.comboSettingsForm = document.getElementById("comboSettingsForm");
+    elements.applyComboSettingsButton = document.getElementById("applyComboSettingsButton");
+    elements.comboBuilderEnabled = document.getElementById("comboBuilderEnabled");
+    elements.comboBuilderTitle = document.getElementById("comboBuilderTitle");
+    elements.comboBuilderDescription = document.getElementById("comboBuilderDescription");
+    elements.comboGiftEnabled = document.getElementById("comboGiftEnabled");
+    elements.comboGiftThreshold = document.getElementById("comboGiftThreshold");
+    elements.comboGiftTitle = document.getElementById("comboGiftTitle");
+    elements.comboGiftDescription = document.getElementById("comboGiftDescription");
+    elements.loyaltyEnabled = document.getElementById("loyaltyEnabled");
+    elements.loyaltyPurchaseTarget = document.getElementById("loyaltyPurchaseTarget");
+    elements.loyaltyRewardTitle = document.getElementById("loyaltyRewardTitle");
     elements.dialog = document.getElementById("productDialog");
     elements.form = document.getElementById("productForm");
     elements.editorTitle = document.getElementById("editorTitle");
@@ -88,6 +106,11 @@
     });
 
     elements.saveButton.addEventListener("click", saveCatalog);
+    elements.applyComboSettingsButton.addEventListener("click", applyComboSettings);
+    elements.comboSettingsForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      applyComboSettings();
+    });
 
     elements.newProductButton.addEventListener("click", function () {
       if (!state.catalog) {
@@ -207,6 +230,8 @@
     catalog = catalog || {};
     catalog.categories = Array.isArray(catalog.categories) ? catalog.categories : [];
     catalog.products = Array.isArray(catalog.products) ? catalog.products : [];
+    catalog.comboBuilder = normalizeComboBuilder(catalog.comboBuilder);
+    catalog.loyalty = normalizeLoyalty(catalog.loyalty);
 
     if (!catalog.categories.some(function (category) { return category.id === "todos"; })) {
       catalog.categories.unshift({ id: "todos", label: "Todos", description: "Todas as ofertas" });
@@ -238,10 +263,55 @@
     return normalized;
   }
 
+  function normalizeComboBuilder(settings) {
+    settings = settings || {};
+    var groups = Array.isArray(settings.groups) && settings.groups.length ? settings.groups : DEFAULT_COMBO_GROUPS;
+    return {
+      enabled: settings.enabled !== false,
+      title: settings.title || "Monte seu Combo",
+      description: settings.description || "Escolha pizza, frango, batata e bebida. O total e calculado na hora.",
+      groups: groups.map(function (group, index) {
+        var fallback = DEFAULT_COMBO_GROUPS[index] || {};
+        return {
+          key: group.key || fallback.key || "item-" + (index + 1),
+          label: group.label || group.title || fallback.label || "Item",
+          source: group.source || fallback.source || group.key,
+          required: group.required !== false,
+          itemIds: Array.isArray(group.itemIds) ? group.itemIds : (fallback.itemIds || [])
+        };
+      }),
+      freeGift: normalizeFreeGift(settings.freeGift)
+    };
+  }
+
+  function normalizeFreeGift(freeGift) {
+    freeGift = freeGift || {};
+    return {
+      enabled: freeGift.enabled !== false,
+      threshold: toNumber(freeGift.threshold || 100),
+      title: freeGift.title || "Refri gratis",
+      description: freeGift.description || "Desbloqueado em combos montados acima de R$100.",
+      itemId: freeGift.itemId || "refri-gelado"
+    };
+  }
+
+  function normalizeLoyalty(loyalty) {
+    loyalty = loyalty || {};
+    return {
+      enabled: Boolean(loyalty.enabled),
+      mode: loyalty.mode || "monthly-purchases",
+      purchaseTarget: toNumber(loyalty.purchaseTarget || 8),
+      rewardTitle: loyalty.rewardTitle || "Pedido gratis",
+      orderIdField: loyalty.orderIdField || "id",
+      historySource: loyalty.historySource || "future-orders-api"
+    };
+  }
+
   function renderAll() {
     renderCategories();
     renderProducts();
     renderMetrics();
+    renderComboSettings();
   }
 
   function renderCategories() {
@@ -255,7 +325,7 @@
 
       return [
         '<button class="category-button ' + (state.selectedCategory === category.id ? "active" : "") + '" type="button" data-category="' + escapeAttr(category.id) + '">',
-        '<strong>' + escapeHtml(category.label || category.id) + '</strong>',
+        '<strong>' + escapeHtml(category.title || category.label || category.id) + '</strong>',
         '<span>' + count + '</span>',
         '</button>'
       ].join("");
@@ -275,6 +345,23 @@
     elements.activeCount.textContent = products.filter(function (product) { return product.active; }).length;
     elements.comboCount.textContent = products.filter(function (product) { return product.combo; }).length;
     elements.featuredCount.textContent = products.filter(function (product) { return product.featured; }).length;
+  }
+
+  function renderComboSettings() {
+    var settings = state.catalog.comboBuilder || normalizeComboBuilder();
+    var gift = settings.freeGift || normalizeFreeGift();
+    var loyalty = state.catalog.loyalty || normalizeLoyalty();
+
+    elements.comboBuilderEnabled.checked = settings.enabled !== false;
+    elements.comboBuilderTitle.value = settings.title || "";
+    elements.comboBuilderDescription.value = settings.description || "";
+    elements.comboGiftEnabled.checked = gift.enabled !== false;
+    elements.comboGiftThreshold.value = gift.threshold || "";
+    elements.comboGiftTitle.value = gift.title || "";
+    elements.comboGiftDescription.value = gift.description || "";
+    elements.loyaltyEnabled.checked = Boolean(loyalty.enabled);
+    elements.loyaltyPurchaseTarget.value = loyalty.purchaseTarget || 8;
+    elements.loyaltyRewardTitle.value = loyalty.rewardTitle || "";
   }
 
   function renderProducts() {
@@ -394,10 +481,47 @@
         return [
           '<label class="check-card">',
           '<input type="checkbox" value="' + escapeAttr(category.id) + '"' + (selectedSet.has(category.id) ? " checked" : "") + '>',
-          '<span>' + escapeHtml(category.label || category.id) + '</span>',
+          '<span>' + escapeHtml(category.title || category.label || category.id) + '</span>',
           '</label>'
         ].join("");
       }).join("");
+  }
+
+  function applyComboSettings() {
+    if (!state.catalog) {
+      showNotice("Espere o catalogo carregar antes de editar as regras.", "error");
+      return;
+    }
+
+    var current = state.catalog.comboBuilder || normalizeComboBuilder();
+    var currentGift = current.freeGift || normalizeFreeGift();
+    var currentLoyalty = state.catalog.loyalty || normalizeLoyalty();
+
+    state.catalog.comboBuilder = {
+      enabled: elements.comboBuilderEnabled.checked,
+      title: elements.comboBuilderTitle.value.trim() || "Monte seu Combo",
+      description: elements.comboBuilderDescription.value.trim(),
+      groups: Array.isArray(current.groups) && current.groups.length ? current.groups : DEFAULT_COMBO_GROUPS,
+      freeGift: {
+        enabled: elements.comboGiftEnabled.checked,
+        threshold: toNumber(elements.comboGiftThreshold.value || currentGift.threshold || 100),
+        title: elements.comboGiftTitle.value.trim() || "Refri gratis",
+        description: elements.comboGiftDescription.value.trim(),
+        itemId: currentGift.itemId || "refri-gelado"
+      }
+    };
+
+    state.catalog.loyalty = {
+      enabled: elements.loyaltyEnabled.checked,
+      mode: currentLoyalty.mode || "monthly-purchases",
+      purchaseTarget: Math.max(1, Math.round(toNumber(elements.loyaltyPurchaseTarget.value || 8))),
+      rewardTitle: elements.loyaltyRewardTitle.value.trim() || "Pedido gratis",
+      orderIdField: currentLoyalty.orderIdField || "id",
+      historySource: currentLoyalty.historySource || "future-orders-api"
+    };
+
+    markDirty("Regras do combo atualizadas. Falta salvar no site.");
+    renderComboSettings();
   }
 
   function applyEditorChanges() {
@@ -593,13 +717,38 @@
     return {
       categories: catalog.categories || [],
       products: (catalog.products || []).map(cleanProductForSave),
+      comboBuilder: cleanComboBuilderForSave(catalog.comboBuilder),
+      loyalty: cleanLoyaltyForSave(catalog.loyalty),
       baseProducts: catalog.baseProducts || {},
       promotionGroups: catalog.promotionGroups || {}
     };
   }
 
-  function cleanProductForSave(product) {
+  function cleanComboBuilderForSave(settings) {
+    var normalized = normalizeComboBuilder(settings);
     return {
+      enabled: normalized.enabled !== false,
+      title: normalized.title || "",
+      description: normalized.description || "",
+      groups: normalized.groups || DEFAULT_COMBO_GROUPS,
+      freeGift: normalized.freeGift
+    };
+  }
+
+  function cleanLoyaltyForSave(loyalty) {
+    var normalized = normalizeLoyalty(loyalty);
+    return {
+      enabled: Boolean(normalized.enabled),
+      mode: normalized.mode,
+      purchaseTarget: Math.max(1, Math.round(toNumber(normalized.purchaseTarget || 8))),
+      rewardTitle: normalized.rewardTitle,
+      orderIdField: normalized.orderIdField,
+      historySource: normalized.historySource
+    };
+  }
+
+  function cleanProductForSave(product) {
+    var clean = {
       id: product.id,
       active: product.active !== false,
       featured: Boolean(product.featured),
@@ -615,6 +764,12 @@
       components: Array.isArray(product.components) ? product.components : [],
       sortScore: toNumber(product.sortScore)
     };
+
+    if (product.comboBuilder && typeof product.comboBuilder === "object") {
+      clean.comboBuilder = product.comboBuilder;
+    }
+
+    return clean;
   }
 
   async function gitGetFile(path) {
@@ -712,7 +867,7 @@
     var category = state.catalog.categories.find(function (item) {
       return item.id === id;
     });
-    return category ? category.label : id;
+    return category ? (category.title || category.label || id) : id;
   }
 
   function makeId(value) {

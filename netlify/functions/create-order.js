@@ -114,9 +114,10 @@ async function notifyStore(order) {
 
 function formatOrderMessage(order) {
   const items = order.items.map((item) => {
+    const components = Array.isArray(item.components) ? item.components : [];
     return [
       `${item.quantity}x ${item.title}`,
-      item.components?.length ? `Itens: ${item.components.join(" + ")}` : "",
+      components.length ? `${item.type === "custom-combo" ? "Combo montado" : "Itens"}: ${components.join(" + ")}` : "",
       `Subtotal: ${formatMoney(item.subtotal)}`
     ].filter(Boolean).join("\n");
   }).join("\n\n");

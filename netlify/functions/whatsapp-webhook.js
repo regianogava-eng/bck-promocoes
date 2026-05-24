@@ -139,19 +139,22 @@ function messageText(item) {
 function buildAutoReply(message) {
   const text = normalize(message.text);
   const siteUrl = publicSiteUrl();
-  const offersUrl = `${siteUrl}#promocoes`;
+  const offersUrl = `${siteUrl}#catalogo`;
+  const comboUrl = `${siteUrl}#monte-seu-combo`;
   const checkoutUrl = `${siteUrl}#checkout`;
 
   if (text.startsWith("__unsupported__")) {
     return [
       "Recebi sua mensagem.",
-      "Para eu te ajudar mais rapido, digite uma opcao:",
+      "Para agilizar seu pedido e nao deixar a fome esperando, me responda com uma opcao:",
       "",
-      "1 - Combos e promocoes",
-      "2 - Montar pedido agora",
+      "1 - Ver combos e promocoes atualizadas",
+      "2 - Montar pedido agora no site",
       "3 - Entrega e endereco",
       "4 - Pagamento",
-      "5 - Alterar ou cancelar"
+      "5 - Alterar ou cancelar",
+      "",
+      "Se quer pedir agora, digite 2."
     ].join("\n");
   }
 
@@ -183,11 +186,12 @@ function buildAutoReply(message) {
     return categoryReply(
       "Combos da noite",
       [
-        "Frango file 500g + pizza pequena",
-        "Pizza + borda + refri",
-        "Frango + batata + bebida"
+        "Monte seu Combo: pizza + frango + batata + bebida",
+        "Combo da noite: Frango File 500g + Pizza Pequena",
+        "Relampago: Pizza + Borda + Refri",
+        "Mais pedido: Frango + Batata + Bebida"
       ],
-      offersUrl
+      comboUrl
     );
   }
 
@@ -195,9 +199,9 @@ function buildAutoReply(message) {
     return categoryReply(
       "Frango BCK",
       [
-        "Frango file 500g",
-        "Frango crocante com acompanhamento",
-        "Combo frango + batata + bebida"
+        "Frango File 500g crocante",
+        "Combo frango + batata + bebida",
+        "Frango + pizza pequena"
       ],
       offersUrl
     );
@@ -209,7 +213,7 @@ function buildAutoReply(message) {
       [
         "Pizza pequena promocional",
         "Pizza + borda recheada",
-        "Pizza + refri para fechar o pedido"
+        "Pizza + frango para dividir"
       ],
       offersUrl
     );
@@ -219,9 +223,9 @@ function buildAutoReply(message) {
     return categoryReply(
       "Batata recheada",
       [
-        "Batata com cheddar",
-        "Batata com bacon",
-        "Batata + refri"
+        "Batata recheada cheddar bacon",
+        "Batata recheada + refri",
+        "Frango + batata + bebida"
       ],
       offersUrl
     );
@@ -231,9 +235,9 @@ function buildAutoReply(message) {
     return categoryReply(
       "Porcoes de carne",
       [
-        "Porcoes para dividir",
-        "Acompanhamentos e molhos",
-        "Combos para completar a mesa"
+        "Porcao de carne BCK",
+        "Porcao para dividir com molho e acompanhamento",
+        "Boa para completar o combo da noite"
       ],
       offersUrl
     );
@@ -244,8 +248,8 @@ function buildAutoReply(message) {
       "Bebidas",
       [
         "Refri gelado",
-        "Bebidas para combo",
-        "Cerveja conforme disponibilidade"
+        "Pizza + borda + refri",
+        "Batata recheada + refri"
       ],
       offersUrl
     );
@@ -253,8 +257,12 @@ function buildAutoReply(message) {
 
   if (hasAny(text, ["hamburguer", "hamburger", "burguer", "burger"])) {
     return [
-      "Hamburguer ainda nao entrou como linha principal no site.",
-      "Hoje, o melhor pedido e ir nos combos de frango, pizza, batata e porcoes.",
+      "Hamburguer ainda nao esta ativo no cardapio de hoje.",
+      "Mas da para pedir forte agora com os combos de frango, pizza, batata e porcoes.",
+      "",
+      "Mais saidos:",
+      "- Frango + Pizza",
+      "- Pizza + Borda + Refri",
       "",
       "Veja as ofertas abertas agora:",
       offersUrl
@@ -263,19 +271,22 @@ function buildAutoReply(message) {
 
   if (hasAny(text, ["horario", "horarios", "aberto", "abre", "fecha", "funciona", "funcionamento"])) {
     return [
-      `${STORE_NAME} - horario de atendimento:`,
+      `${STORE_NAME} atende:`,
       DEFAULT_HOURS,
       "",
-      "Se o site estiver aberto, monte o carrinho e envie o pedido pronto por aqui:",
+      "Se bateu fome agora, monte o carrinho e envie o pedido pronto por aqui:",
       siteUrl
     ].join("\n");
   }
 
   if (hasAny(text, ["status", "acompanhar", "andamento", "meu pedido", "cade", "demora"])) {
     return [
-      "Para consultar um pedido ja enviado, mande:",
+      "Para consultar um pedido ja enviado, responda assim:",
       "",
       "STATUS + seu nome + telefone",
+      "",
+      "Exemplo:",
+      "STATUS Regiano 99999-9999",
       "",
       "Se acabou de finalizar no site, aguarde a confirmacao por aqui."
     ].join("\n");
@@ -283,9 +294,9 @@ function buildAutoReply(message) {
 
   if (hasAny(text, ["atendente", "humano", "pessoa", "falar com", "ajuda", "problema", "reclamar"])) {
     return [
-      "Certo. Vou deixar sua mensagem registrada para a equipe da BCK acompanhar.",
+      "Certo. Sua mensagem ficou registrada para a equipe da BCK acompanhar.",
       "",
-      "Para pedido novo, o caminho mais rapido e montar pelo site:",
+      "Enquanto isso, se for pedido novo, o caminho mais rapido e montar pelo site:",
       siteUrl,
       "",
       "Se for urgente, envie: ATENDENTE + seu nome."
@@ -298,8 +309,9 @@ function buildAutoReply(message) {
 
   if (hasAny(text, ["obrigado", "obrigada", "valeu", "blz", "beleza", "ok", "certo"])) {
     return [
-      "Fechado.",
-      "Quando quiser pedir, digite 1 para ver os combos ou abra direto:",
+      "Fechado. Quando a fome chamar, a BCK ja esta no jeito.",
+      "",
+      "Digite 1 para ver os combos ou abra direto:",
       siteUrl
     ].join("\n");
   }
@@ -309,49 +321,50 @@ function buildAutoReply(message) {
 
 function mainMenu(siteUrl) {
   return [
-    `Oi. Atendimento automatico da ${STORE_NAME}.`,
-    "Quer pedir mais rapido e sem fila?",
+    `Oi. Aqui e o atendimento automatico da ${STORE_NAME}.`,
     "",
-    "1 - Combos e promocoes de hoje",
+    "Para pedir rapido, escolha uma opcao:",
+    "",
+    "1 - Ver combos e promocoes de hoje",
     "2 - Montar pedido no site",
     "3 - Entrega e endereco",
     "4 - Formas de pagamento",
     "5 - Alterar ou cancelar item",
     "",
-    "Tambem pode digitar: FRANGO, PIZZA, BATATA, CARNE ou BEBIDAS.",
+    "Atalho rapido: digite PIZZA, FRANGO, BATATA, CARNE ou BEBIDAS.",
     "",
+    "Cardapio e pedidos:",
     siteUrl
   ].join("\n");
 }
 
 function promotionsReply(offersUrl) {
   return [
-    "Perfeito. As ofertas mais fortes da BCK estao aqui:",
+    "Tem oferta boa para pedir agora na BCK.",
     "",
-    "- Frango file 500g + pizza pequena",
-    "- Pizza + borda + refri",
-    "- Frango + batata + bebida",
-    "- Batata recheada + refri",
+    "Combos que mais giram hoje:",
+    "- Frango File 500g + Pizza Pequena",
+    "- Pizza + Borda + Refri",
+    "- Frango + Batata + Bebida",
+    "- Batata Recheada + Refri",
     "",
     "Escolha no site, monte o carrinho e envie o pedido pronto por aqui:",
     offersUrl,
     "",
-    "Quer ir direto por categoria? Digite FRANGO, PIZZA, BATATA, CARNE ou BEBIDAS."
+    "Para ir direto em uma categoria, digite PIZZA, FRANGO ou BATATA."
   ].join("\n");
 }
 
 function orderReply(siteUrl, checkoutUrl) {
   return [
-    "Pedido rapido pela BCK:",
+    "Fechou. O jeito mais rapido e montar pelo site.",
     "",
-    "1. Abra o site",
-    "2. Escolha os combos",
-    "3. Confira o carrinho",
-    "4. Coloque nome, telefone e endereco",
-    "5. Finalize e envie tudo por aqui no WhatsApp",
+    "Voce escolhe os itens, confere o total e o site ja manda o pedido completo para este WhatsApp.",
     "",
-    "Link direto para montar:",
-    checkoutUrl || siteUrl
+    "Toque aqui e va direto para o checkout:",
+    checkoutUrl || siteUrl,
+    "",
+    "Depois de finalizar, acompanhe a confirmacao por esta conversa."
   ].join("\n");
 }
 
@@ -359,26 +372,27 @@ function deliveryReply(siteUrl) {
   return [
     `Fazemos delivery em ${CITY} e regiao conforme disponibilidade da noite.`,
     "",
-    "No pedido, coloque:",
-    "- Rua",
-    "- Numero",
+    "Para evitar atraso, coloque no pedido:",
+    "- Rua e numero",
     "- Bairro",
     "- Ponto de referencia",
+    "- Observacao se precisar",
     "",
-    "Para agilizar, monte o carrinho no site e envie pronto:",
+    "Monte o pedido aqui e envie completo:",
     siteUrl
   ].join("\n");
 }
 
 function paymentReply(siteUrl) {
   return [
-    "Formas de pagamento aceitas:",
-    "",
+    "A BCK aceita:",
     "- Pix",
     "- Cartao na entrega",
     "- Dinheiro",
     "",
     "Se for dinheiro, escreva nas observacoes se precisa de troco.",
+    "Se for Pix, envie o comprovante por aqui depois do pedido.",
+    "",
     "Monte o pedido aqui:",
     siteUrl
   ].join("\n");
@@ -386,10 +400,13 @@ function paymentReply(siteUrl) {
 
 function changeOrderReply(siteUrl) {
   return [
-    "Se ainda nao finalizou, abra o carrinho no site e use +, - ou remover.",
+    "Se ainda nao finalizou, ajuste direto no carrinho do site usando +, - ou remover.",
     "",
     "Se ja enviou o pedido, responda:",
     "CANCELAR PEDIDO + seu nome + telefone",
+    "",
+    "Exemplo:",
+    "CANCELAR PEDIDO Regiano 99999-9999",
     "",
     "A equipe confere antes de seguir para preparo.",
     siteUrl
@@ -398,13 +415,15 @@ function changeOrderReply(siteUrl) {
 
 function categoryReply(categoryName, examples, offersUrl) {
   return [
-    `${categoryName} esta entre as opcoes da BCK hoje.`,
+    `${categoryName}: boa escolha.`,
     "",
-    "Sugestoes:",
+    "Hoje vale olhar:",
     ...examples.map((item) => `- ${item}`),
     "",
-    "Veja valores, monte o carrinho e envie o pedido:",
-    offersUrl
+    "Veja preco, foto e monte o carrinho aqui:",
+    offersUrl,
+    "",
+    "Depois o pedido sai pronto para enviar neste WhatsApp."
   ].join("\n");
 }
 

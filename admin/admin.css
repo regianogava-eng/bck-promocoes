@@ -287,6 +287,50 @@ button {
   font-size: 2rem;
 }
 
+.settings-panel {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: rgba(255,255,255,0.05);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings-head h2 {
+  margin: 0.25rem 0 0;
+  font-size: 1.35rem;
+  line-height: 1.08;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.settings-grid.compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-grid label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.settings-grid .switch {
+  display: flex;
+}
+
 .tool-row {
   justify-content: space-between;
   margin: 1rem 0;
@@ -650,7 +694,8 @@ legend {
   }
 
   .topbar,
-  .tool-row {
+  .tool-row,
+  .settings-head {
     align-items: stretch;
     flex-direction: column;
   }
@@ -681,6 +726,8 @@ legend {
 
   .category-nav,
   .form-grid,
+  .settings-grid,
+  .settings-grid.compact,
   .top-actions {
     grid-template-columns: 1fr;
   }

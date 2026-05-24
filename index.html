@@ -35,6 +35,7 @@
 
       <nav class="desktop-nav" aria-label="Navegação principal">
         <a href="#catalogo">Categorias</a>
+        <a href="#monte-seu-combo">Monte seu Combo</a>
         <a href="#combos">Combos</a>
         <a href="#checkout">Checkout</a>
       </nav>
@@ -91,6 +92,7 @@
           <span>Promoções válidas hoje</span>
           <span>Combos limitados</span>
           <span>Mais pedidos da noite</span>
+          <span>Refri gratis acima de R$100</span>
           <span>Checkout pelo WhatsApp</span>
           <span>Preparado para Pix online futuro</span>
         </div>
@@ -140,6 +142,33 @@
         </div>
 
         <div class="product-grid" data-product-grid></div>
+      </section>
+
+      <section class="custom-combo-section" id="monte-seu-combo" data-combo-builder-section hidden aria-labelledby="custom-combo-title">
+        <div class="section-head">
+          <div>
+            <span class="eyebrow">Monte seu Combo</span>
+            <h2 id="custom-combo-title" data-combo-builder-title>Monte seu Combo</h2>
+            <p data-combo-builder-description>Escolha pizza, frango, batata e bebida. O total e calculado na hora.</p>
+          </div>
+          <div class="combo-unlock">
+            <span>Brinde</span>
+            <strong data-combo-gift-status>Refri gratis acima de R$100.</strong>
+          </div>
+        </div>
+
+        <div class="custom-combo-layout">
+          <div class="combo-options" data-combo-options></div>
+
+          <aside class="combo-total-panel" aria-label="Resumo do combo montado">
+            <span>Total do combo</span>
+            <strong data-combo-total>R$ 0,00</strong>
+            <p data-combo-summary></p>
+            <button class="btn btn--primary btn--full" type="button" data-add-custom-combo>
+              Adicionar combo montado
+            </button>
+          </aside>
+        </div>
       </section>
 
       <section class="combo-builder" id="combos" aria-labelledby="combo-title">
