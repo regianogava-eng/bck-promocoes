@@ -129,6 +129,8 @@ const els = {
   cartDrawer: document.querySelector("[data-cart-drawer]"),
   cartList: document.querySelector("[data-cart-list]"),
   cartEmpty: document.querySelector("[data-cart-empty]"),
+  orderConfirmation: document.querySelector("[data-order-confirmation]"),
+  orderConfirmationId: document.querySelector("[data-order-confirmation-id]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
   categoryTemplate: document.querySelector("#category-template"),
   productTemplate: document.querySelector("#product-template"),
@@ -1084,10 +1086,12 @@ function submitOrder(event) {
     const url = buildWhatsappUrl(buildOrderMessage(order));
     if (checkoutWindow && !checkoutWindow.closed) {
       checkoutWindow.location.href = url;
-      return;
+    } else {
+      window.open(url, "_blank", "noopener");
     }
 
-    window.open(url, "_blank", "noopener");
+    clearCartAfterOrder();
+    showOrderConfirmation(order);
   });
 }
 
@@ -1097,6 +1101,30 @@ function openCart() {
 
 function closeCart() {
   els.cartDrawer.hidden = true;
+}
+
+function clearCartAfterOrder() {
+  state.cart = [];
+  saveCart();
+  renderCart();
+  closeCart();
+}
+
+function showOrderConfirmation(order) {
+  if (!els.orderConfirmation) return;
+
+  els.orderConfirmationId.textContent = `Pedido #${order.id}`;
+  els.orderConfirmation.hidden = false;
+  window.clearTimeout(showOrderConfirmation.timer);
+  showOrderConfirmation.timer = window.setTimeout(() => {
+    els.orderConfirmation.hidden = true;
+  }, 12000);
+}
+
+function closeOrderConfirmation() {
+  if (els.orderConfirmation) {
+    els.orderConfirmation.hidden = true;
+  }
 }
 
 function openCheckout() {
@@ -1204,6 +1232,11 @@ function bindEvents() {
 
     if (event.target.closest("[data-close-cart]")) {
       closeCart();
+      return;
+    }
+
+    if (event.target.closest("[data-close-order-confirmation]")) {
+      closeOrderConfirmation();
       return;
     }
 

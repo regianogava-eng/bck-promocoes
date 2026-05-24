@@ -1177,6 +1177,41 @@ textarea {
   color: var(--gold);
 }
 
+.order-confirmation {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 90;
+  width: min(420px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  border-radius: var(--radius);
+  background: rgba(8, 34, 18, 0.98);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.48);
+}
+
+.order-confirmation[hidden] {
+  display: none;
+}
+
+.order-confirmation strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--gold);
+  font-family: Montserrat, Inter, sans-serif;
+  font-size: 1.25rem;
+}
+
+.order-confirmation p {
+  margin: 8px 0 0;
+  color: #d9ffe7;
+  font-size: 0.92rem;
+}
+
 @media (min-width: 540px) {
   .brand__name,
   .desktop-nav {
