@@ -40,21 +40,30 @@ WHATSAPP_PHONE_NUMBER_ID=1153856107808696
 WHATSAPP_API_VERSION=v25.0
 WHATSAPP_VERIFY_TOKEN=crie_um_codigo_secreto_e_repita_na_meta
 BCK_STORE_NOTIFY_NUMBER=5528999329677
-SITE_URL=https://jovial-vacherin-8c5599.netlify.app
+SITE_URL=https://dashing-bonbon-7e09a1.netlify.app
 ORDER_WEBHOOK_URL=
 META_APP_SECRET=
-BCK_OPERATING_HOURS=Todos os dias, das 18h as 23h
+BCK_OPERATING_HOURS=Todos os dias, das 17h as 00h
+BCK_AI_ASSISTANT_NAME=Bibi
+BCK_AI_ASSISTANT_KEYWORD=BIBI
 ```
 
 No painel da Meta, o callback do webhook deve ser:
 
 ```text
-https://jovial-vacherin-8c5599.netlify.app/.netlify/functions/whatsapp-webhook
+https://dashing-bonbon-7e09a1.netlify.app/.netlify/functions/whatsapp-webhook
 ```
 
 O verify token deve ser exatamente o mesmo valor de `WHATSAPP_VERIFY_TOKEN`.
 
 Depois de verificar o webhook, assine o evento `messages`.
+
+## Bibi, atendente virtual
+
+O mini site tem uma opcao separada para continuar a conversa com a Bibi, a atendente virtual da BCK.
+
+Por enquanto, ela abre o WhatsApp com uma mensagem pronta e o webhook reconhece `BIBI` ou a opcao `6`.
+Depois, essa mesma entrada pode ser ligada a uma IA real, Make, n8n ou outro atendimento automatico sem mexer no checkout principal.
 
 ## Pedido
 

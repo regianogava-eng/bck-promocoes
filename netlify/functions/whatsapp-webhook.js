@@ -7,10 +7,12 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type,X-Hub-Signature-256"
 };
 
-const SITE_FALLBACK = "https://bckbeerchicken.netlify.app";
+const SITE_FALLBACK = "https://dashing-bonbon-7e09a1.netlify.app";
 const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
 const CITY = process.env.BCK_CITY || "Cachoeiro";
-const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 18h as 23h";
+const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
+const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
+const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -153,9 +155,14 @@ function buildAutoReply(message) {
       "3 - Entrega e endereco",
       "4 - Pagamento",
       "5 - Alterar ou cancelar",
+      `6 - Continuar com a ${AI_ASSISTANT_NAME}, atendente virtual`,
       "",
       "Se quer pedir agora, digite 2."
     ].join("\n");
+  }
+
+  if (isAssistantRequest(text)) {
+    return assistantReply(siteUrl);
   }
 
   if (isMenuRequest(text)) {
@@ -180,6 +187,10 @@ function buildAutoReply(message) {
 
   if (isChoice(text, "5") || hasAny(text, ["apagar", "remover", "tirar", "excluir", "alterar", "mudar", "editar", "menos", "cancelar", "cancela"])) {
     return changeOrderReply(siteUrl);
+  }
+
+  if (isChoice(text, "6")) {
+    return assistantReply(siteUrl);
   }
 
   if (hasAny(text, ["combo", "combos", "casado", "pizza com frango", "frango com pizza"])) {
@@ -330,10 +341,30 @@ function mainMenu(siteUrl) {
     "3 - Entrega e endereco",
     "4 - Formas de pagamento",
     "5 - Alterar ou cancelar item",
+    `6 - Falar com a ${AI_ASSISTANT_NAME}, atendente virtual`,
     "",
     "Atalho rapido: digite PIZZA, FRANGO, BATATA, CARNE ou BEBIDAS.",
+    `Para continuar com a atendente virtual, digite ${AI_ASSISTANT_KEYWORD.toUpperCase()}.`,
     "",
     "Cardapio e pedidos:",
+    siteUrl
+  ].join("\n");
+}
+
+function assistantReply(siteUrl) {
+  return [
+    `Oi, eu sou a ${AI_ASSISTANT_NAME}, atendente virtual da BCK.`,
+    "",
+    "Posso te ajudar a escolher combo, tirar duvida de entrega, explicar pagamento ou mandar o link do pedido.",
+    "",
+    "Me responda com uma destas opcoes:",
+    "1 - Ver promocoes",
+    "2 - Montar pedido no site",
+    "3 - Entrega e endereco",
+    "4 - Pagamento",
+    "5 - Falar com humano",
+    "",
+    "Cardapio rapido:",
     siteUrl
   ].join("\n");
 }
@@ -481,6 +512,19 @@ function isChoice(text, number) {
     || text.startsWith(`${number} `)
     || text.startsWith(`${number}-`)
     || text.startsWith(`${number}.`);
+}
+
+function isAssistantRequest(text) {
+  return text === AI_ASSISTANT_KEYWORD
+    || hasAny(text, [
+      AI_ASSISTANT_NAME,
+      "assistente virtual",
+      "assistente ia",
+      "inteligencia artificial",
+      "falar com a bibi",
+      "bibi",
+      "bot"
+    ]);
 }
 
 function isMenuRequest(text) {

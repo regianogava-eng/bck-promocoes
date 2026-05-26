@@ -132,6 +132,11 @@ const els = {
   orderConfirmation: document.querySelector("[data-order-confirmation]"),
   orderConfirmationId: document.querySelector("[data-order-confirmation-id]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
+  aiAssistantCard: document.querySelector("[data-ai-assistant-card]"),
+  aiAssistantLabels: document.querySelectorAll("[data-ai-assistant-label]"),
+  aiAssistantShort: document.querySelector("[data-ai-assistant-short]"),
+  aiAssistantHeadline: document.querySelector("[data-ai-assistant-headline]"),
+  aiAssistantDescription: document.querySelector("[data-ai-assistant-description]"),
   categoryTemplate: document.querySelector("#category-template"),
   productTemplate: document.querySelector("#product-template"),
   cartItemTemplate: document.querySelector("#cart-item-template")
@@ -376,6 +381,50 @@ function buildWhatsappUrl(message) {
 
 function automationSettings() {
   return config.automation || {};
+}
+
+function aiAssistantSettings() {
+  return automationSettings().aiAssistant || {};
+}
+
+function aiAssistantEnabled() {
+  return aiAssistantSettings().enabled !== false;
+}
+
+function buildAssistantMessage() {
+  const assistant = aiAssistantSettings();
+  return assistant.whatsappMessage || `Oi, ${assistant.name || "BCK"}! Vim pelo mini site e quero ajuda para escolher meu pedido.`;
+}
+
+function buildAssistantUrl() {
+  return buildWhatsappUrl(buildAssistantMessage());
+}
+
+function renderAiAssistant() {
+  const assistant = aiAssistantSettings();
+  const enabled = aiAssistantEnabled();
+  const name = assistant.name || "Bibi";
+  const label = assistant.label || `Conversar com ${name}`;
+
+  if (els.aiAssistantCard) {
+    els.aiAssistantCard.hidden = !enabled;
+  }
+
+  els.aiAssistantLabels.forEach((element) => {
+    element.textContent = label;
+  });
+
+  if (els.aiAssistantShort) {
+    els.aiAssistantShort.textContent = assistant.shortLabel || `${name} IA`;
+  }
+
+  if (els.aiAssistantHeadline) {
+    els.aiAssistantHeadline.textContent = assistant.headline || `Fale com ${name}`;
+  }
+
+  if (els.aiAssistantDescription) {
+    els.aiAssistantDescription.textContent = assistant.description || "Continue seu atendimento com a assistente virtual da BCK.";
+  }
 }
 
 function createOrderId() {
@@ -1160,6 +1209,23 @@ function openCheckout() {
   window.setTimeout(() => firstInput.focus({ preventScroll: true }), 450);
 }
 
+function openAiAssistant() {
+  if (!aiAssistantEnabled()) return;
+
+  const assistant = aiAssistantSettings();
+  trackEvent("lead", {
+    value: cartTotal(),
+    assistant_name: assistant.name || "Bibi",
+    source: "ai_assistant_cta"
+  });
+
+  const url = buildAssistantUrl();
+  const assistantWindow = window.open(url, "_blank", "noopener");
+  if (!assistantWindow) {
+    window.location.href = url;
+  }
+}
+
 function saveCart() {
   localStorage.setItem("bck-promos-cart", JSON.stringify(state.cart));
 }
@@ -1259,6 +1325,11 @@ function bindEvents() {
       return;
     }
 
+    if (event.target.closest("[data-open-ai-assistant]")) {
+      openAiAssistant();
+      return;
+    }
+
     const decrease = event.target.closest("[data-decrease-item]");
     if (decrease) {
       changeQuantity(decrease.dataset.decreaseItem, -1);
@@ -1326,6 +1397,8 @@ function exposeIntegrationHooks() {
     changeQuantity,
     buildOrderPayload,
     buildOrderMessage,
+    buildAssistantMessage,
+    openAiAssistant,
     submitOrderToApi,
     trackEvent
   };
@@ -1342,6 +1415,7 @@ async function init() {
   renderComboBuilder();
   renderCombos();
   renderCart();
+  renderAiAssistant();
   bindEvents();
   exposeIntegrationHooks();
   updateCountdown();

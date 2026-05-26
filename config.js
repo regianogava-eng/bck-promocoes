@@ -2,13 +2,13 @@ window.BCK_CONFIG = {
   storeName: "BCK Beer Chicken",
   city: "Cachoeiro",
   whatsappNumber: "5528999329677",
-  siteUrl: "https://jovial-vacherin-8c5599.netlify.app",
+  siteUrl: "https://dashing-bonbon-7e09a1.netlify.app",
   currency: "BRL",
   deliveryFee: 0,
   automation: {
     enabled: true,
     orderPrefix: "BCK",
-    operatingHours: "Todos os dias, das 18h as 23h",
+    operatingHours: "Todos os dias, das 17h as 00h",
     estimatedPrepMinutes: 35,
     estimatedDeliveryMinutes: 55,
     autoConfirmText: "Pedido recebido automaticamente pelo site. Se os dados estiverem certos, ja pode seguir para preparo.",
@@ -34,6 +34,17 @@ window.BCK_CONFIG = {
         "Enviar endereco",
         "Falar sobre meu pedido"
       ]
+    },
+    aiAssistant: {
+      enabled: true,
+      name: "Bibi",
+      label: "Conversar com a Bibi",
+      shortLabel: "Bibi IA",
+      headline: "Fale com a Bibi",
+      description: "A atendente virtual da BCK ajuda a escolher combo, tirar duvida de entrega e continuar seu atendimento.",
+      whatsappMessage: "Oi, Bibi! Vim pelo mini site e quero ajuda para escolher meu pedido.",
+      handoffKeyword: "BIBI",
+      provider: "whatsapp-cloud-api"
     },
     apiReady: {
       whatsappCloudApi: false,
