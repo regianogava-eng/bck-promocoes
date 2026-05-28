@@ -44,6 +44,7 @@
     elements.loginButton = document.getElementById("loginButton");
     elements.logoutButton = document.getElementById("logoutButton");
     elements.reloadButton = document.getElementById("reloadButton");
+    elements.validateButton = document.getElementById("validateButton");
     elements.saveButton = document.getElementById("saveButton");
     elements.newProductButton = document.getElementById("newProductButton");
     elements.activeCount = document.getElementById("activeCount");
@@ -106,6 +107,7 @@
     });
 
     elements.saveButton.addEventListener("click", saveCatalog);
+    elements.validateButton.addEventListener("click", validateCatalog);
     elements.applyComboSettingsButton.addEventListener("click", applyComboSettings);
     elements.comboSettingsForm.addEventListener("submit", function (event) {
       event.preventDefault();
@@ -653,12 +655,13 @@
       await uploadPendingImages();
       syncLegacyGroups();
 
-      var cleanCatalog = cleanForSave(state.catalog);
+      var cleanCatalog = validateCatalogForSave(state.catalog);
+      var catalogJson = JSON.stringify(cleanCatalog, null, 2) + "\n";
       var latest = await gitGetFile(CATALOG_PATH).catch(function () {
         return { sha: state.catalogSha };
       });
 
-      await gitPutFile(CATALOG_PATH, JSON.stringify(cleanCatalog, null, 2) + "\n", latest.sha, "Update BCK catalog from custom admin");
+      await gitPutFile(CATALOG_PATH, catalogJson, latest.sha, "Update BCK catalog from custom admin");
       state.catalogSha = null;
       state.pendingImages = {};
       state.dirty = false;
@@ -668,6 +671,23 @@
     } catch (error) {
       console.error(error);
       setReady("Erro ao salvar");
+      showNotice(readableError(error), "error");
+    }
+  }
+
+  function validateCatalog() {
+    if (!state.catalog) {
+      showNotice("O catalogo ainda nao carregou.", "error");
+      return;
+    }
+
+    try {
+      validateCatalogForSave(state.catalog);
+      setReady("Catalogo validado");
+      showNotice("Catalogo validado. Pode salvar com seguranca.", "ok");
+    } catch (error) {
+      console.error(error);
+      setReady("Erro na validacao");
       showNotice(readableError(error), "error");
     }
   }
@@ -711,6 +731,174 @@
     });
 
     state.catalog.promotionGroups = Object.assign({}, state.catalog.promotionGroups || {}, groups);
+  }
+
+  function validateCatalogForSave(catalog) {
+    var cleanCatalog = cleanForSave(catalog);
+    var issues = collectCatalogIssues(cleanCatalog);
+
+    try {
+      JSON.parse(JSON.stringify(cleanCatalog));
+    } catch (error) {
+      issues.push("O catalogo nao conseguiu virar JSON valido.");
+    }
+
+    if (issues.length) {
+      throw new Error("Corrija antes de salvar: " + issues.slice(0, 4).join(" "));
+    }
+
+    return cleanCatalog;
+  }
+
+  function collectCatalogIssues(catalog) {
+    var issues = [];
+    var categoryIds = new Set();
+    var productIds = new Set();
+
+    if (!catalog || typeof catalog !== "object") {
+      return ["Catalogo vazio ou invalido."];
+    }
+
+    if (!Array.isArray(catalog.categories) || !catalog.categories.length) {
+      issues.push("Cadastre pelo menos uma categoria.");
+    } else {
+      catalog.categories.forEach(function (category, index) {
+        var label = "Categoria " + (index + 1);
+        if (!category || typeof category !== "object") {
+          issues.push(label + " esta invalida.");
+          return;
+        }
+
+        if (!category.id) {
+          issues.push(label + " esta sem ID.");
+          return;
+        }
+
+        if (categoryIds.has(category.id)) {
+          issues.push("Categoria duplicada: " + category.id + ".");
+        }
+
+        categoryIds.add(category.id);
+      });
+    }
+
+    if (!Array.isArray(catalog.products)) {
+      issues.push("A lista de produtos precisa existir.");
+      return issues;
+    }
+
+    catalog.products.forEach(function (product, index) {
+      var label = product && (product.title || product.id) ? (product.title || product.id) : "Produto " + (index + 1);
+
+      if (!product || typeof product !== "object") {
+        issues.push("Produto " + (index + 1) + " esta invalido.");
+        return;
+      }
+
+      if (!product.id) {
+        issues.push(label + " esta sem ID.");
+      } else if (productIds.has(product.id)) {
+        issues.push("Produto duplicado: " + product.id + ".");
+      }
+
+      productIds.add(product.id);
+
+      if (!product.title) {
+        issues.push(label + " esta sem nome.");
+      }
+
+      if (!Array.isArray(product.categories) || !product.categories.length) {
+        issues.push(label + " precisa aparecer em pelo menos uma aba.");
+      } else {
+        product.categories.forEach(function (categoryId) {
+          if (categoryId !== "todos" && !categoryIds.has(categoryId)) {
+            issues.push(label + " usa uma categoria que nao existe: " + categoryId + ".");
+          }
+        });
+      }
+
+      if (!Array.isArray(product.components)) {
+        issues.push(label + " tem itens do combo em formato invalido.");
+      }
+
+      if (toNumber(product.promoPrice) < 0 || toNumber(product.originalPrice) < 0) {
+        issues.push(label + " tem preco negativo.");
+      }
+    });
+
+    addBaseProductIds(catalog.baseProducts, productIds);
+    validateComboBuilderIssues(catalog.comboBuilder, productIds, issues);
+    validateLoyaltyIssues(catalog.loyalty, issues);
+
+    return issues;
+  }
+
+  function addBaseProductIds(baseProducts, productIds) {
+    if (!baseProducts || typeof baseProducts !== "object") {
+      return;
+    }
+
+    Object.keys(baseProducts).forEach(function (groupKey) {
+      var group = baseProducts[groupKey];
+      if (!Array.isArray(group)) {
+        return;
+      }
+
+      group.forEach(function (item) {
+        if (item && item.id) {
+          productIds.add(item.id);
+        }
+      });
+    });
+  }
+
+  function validateComboBuilderIssues(comboBuilder, productIds, issues) {
+    if (!comboBuilder) {
+      return;
+    }
+
+    if (!Array.isArray(comboBuilder.groups) || !comboBuilder.groups.length) {
+      issues.push("Monte seu Combo precisa ter pelo menos um grupo.");
+      return;
+    }
+
+    comboBuilder.groups.forEach(function (group, index) {
+      var label = group && (group.label || group.key) ? (group.label || group.key) : "Grupo " + (index + 1);
+
+      if (!group || typeof group !== "object") {
+        issues.push("Grupo " + (index + 1) + " do combo esta invalido.");
+        return;
+      }
+
+      if (!group.key) {
+        issues.push(label + " esta sem chave no Monte seu Combo.");
+      }
+
+      if (!Array.isArray(group.itemIds) || !group.itemIds.length) {
+        issues.push(label + " precisa ter opcoes no Monte seu Combo.");
+        return;
+      }
+
+      group.itemIds.forEach(function (itemId) {
+        if (!productIds.has(itemId)) {
+          issues.push(label + " aponta para item inexistente: " + itemId + ".");
+        }
+      });
+    });
+
+    if (comboBuilder.freeGift && comboBuilder.freeGift.itemId && !productIds.has(comboBuilder.freeGift.itemId)) {
+      issues.push("O brinde aponta para item inexistente: " + comboBuilder.freeGift.itemId + ".");
+    }
+  }
+
+  function validateLoyaltyIssues(loyalty, issues) {
+    if (!loyalty || !loyalty.enabled) {
+      return;
+    }
+
+    if (Math.max(1, Math.round(toNumber(loyalty.purchaseTarget || 0))) < 1) {
+      issues.push("A fidelidade precisa ter meta de compras maior que zero.");
+    }
   }
 
   function cleanForSave(catalog) {
