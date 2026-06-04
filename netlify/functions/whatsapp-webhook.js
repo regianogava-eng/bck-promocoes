@@ -439,7 +439,9 @@ function manualOrderReceivedReply(orderText) {
     "",
     formatCustomerOrder(orderText),
     "",
-    "Vou encaminhar para a equipe responsavel conferir tudo e te responder por aqui com a confirmacao."
+    "Vou encaminhar para a equipe responsavel conferir tudo e te responder por aqui com a confirmacao.",
+    "",
+    "pedido novo favor confirmar"
   ].join("\n");
 }
 
