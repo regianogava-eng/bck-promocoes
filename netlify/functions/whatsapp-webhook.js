@@ -7,7 +7,7 @@ const JSON_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type,X-Hub-Signature-256"
 };
 
-const SITE_FALLBACK = "https://dashing-bonbon-7e09a1.netlify.app";
+const SITE_FALLBACK = "https://beerchicken-bck.netlify.app";
 const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
 const CITY = process.env.BCK_CITY || "Cachoeiro";
 const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
@@ -148,16 +148,13 @@ function buildAutoReply(message) {
   if (text.startsWith("__unsupported__")) {
     return [
       "Recebi sua mensagem.",
-      "Para agilizar seu pedido e nao deixar a fome esperando, me responda com uma opcao:",
+      "Para agilizar seu pedido, me responda com uma opcao:",
       "",
-      "1 - Ver combos e promocoes atualizadas",
-      "2 - Montar pedido agora no site",
-      "3 - Entrega e endereco",
-      "4 - Pagamento",
-      "5 - Alterar ou cancelar",
-      `6 - Continuar com a ${AI_ASSISTANT_NAME}, atendente virtual`,
+      "1 - Pedir pelo cardapio",
+      "2 - Pedir pelo WhatsApp",
       "",
-      "Se quer pedir agora, digite 2."
+      "Veja nosso cardapio:",
+      siteUrl
     ].join("\n");
   }
 
@@ -169,11 +166,23 @@ function buildAutoReply(message) {
     return mainMenu(siteUrl);
   }
 
-  if (isChoice(text, "1") || hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas", "cardapio", "preco", "precos"])) {
+  if (isGreeting(text)) {
+    return mainMenu(siteUrl);
+  }
+
+  if (isChoice(text, "1") || hasAny(text, ["cardapio", "menu digital", "abrir cardapio", "ver cardapio", "preco", "precos"])) {
+    return catalogReply(siteUrl, offersUrl, comboUrl);
+  }
+
+  if (isChoice(text, "2") || hasAny(text, ["pedido pelo whatsapp", "pedir pelo whatsapp", "whatsapp", "zap", "atendente", "humano", "pessoa", "falar com"])) {
+    return whatsappOrderReply(siteUrl);
+  }
+
+  if (hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas"])) {
     return promotionsReply(offersUrl);
   }
 
-  if (isChoice(text, "2") || hasAny(text, ["pedido", "pedir", "comprar", "carrinho", "checkout", "finalizar", "quero pedir", "fazer pedido", "quero comprar", "link"])) {
+  if (hasAny(text, ["pedido", "pedir", "comprar", "carrinho", "checkout", "finalizar", "quero pedir", "fazer pedido", "quero comprar", "link"])) {
     return orderReply(siteUrl, checkoutUrl);
   }
 
@@ -303,7 +312,7 @@ function buildAutoReply(message) {
     ].join("\n");
   }
 
-  if (hasAny(text, ["atendente", "humano", "pessoa", "falar com", "ajuda", "problema", "reclamar"])) {
+  if (hasAny(text, ["ajuda", "problema", "reclamar"])) {
     return [
       "Certo. Sua mensagem ficou registrada para a equipe da BCK acompanhar.",
       "",
@@ -312,10 +321,6 @@ function buildAutoReply(message) {
       "",
       "Se for urgente, envie: ATENDENTE + seu nome."
     ].join("\n");
-  }
-
-  if (isGreeting(text)) {
-    return mainMenu(siteUrl);
   }
 
   if (hasAny(text, ["obrigado", "obrigada", "valeu", "blz", "beleza", "ok", "certo"])) {
@@ -332,21 +337,15 @@ function buildAutoReply(message) {
 
 function mainMenu(siteUrl) {
   return [
-    `Oi. Aqui e o atendimento automatico da ${STORE_NAME}.`,
+    `Oi, boa tarde. Aqui e o atendimento automatico da ${STORE_NAME}.`,
+    "E um prazer te atender.",
     "",
-    "Para pedir rapido, escolha uma opcao:",
+    "Como posso te ajudar?",
     "",
-    "1 - Ver combos e promocoes de hoje",
-    "2 - Montar pedido no site",
-    "3 - Entrega e endereco",
-    "4 - Formas de pagamento",
-    "5 - Alterar ou cancelar item",
-    `6 - Falar com a ${AI_ASSISTANT_NAME}, atendente virtual`,
+    "1 - Pedir pelo cardapio",
+    "2 - Pedir pelo WhatsApp",
     "",
-    "Atalho rapido: digite PIZZA, FRANGO, BATATA, CARNE ou BEBIDAS.",
-    `Para continuar com a atendente virtual, digite ${AI_ASSISTANT_KEYWORD.toUpperCase()}.`,
-    "",
-    "Cardapio e pedidos:",
+    "Veja nosso cardapio:",
     siteUrl
   ].join("\n");
 }
@@ -386,6 +385,20 @@ function promotionsReply(offersUrl) {
   ].join("\n");
 }
 
+function catalogReply(siteUrl, offersUrl, comboUrl) {
+  return [
+    "Perfeito. Pelo cardapio voce escolhe, monta o carrinho e envia o pedido completo para este WhatsApp.",
+    "",
+    "Cardapio:",
+    offersUrl || siteUrl,
+    "",
+    "Monte seu Combo:",
+    comboUrl || siteUrl,
+    "",
+    "No combo acima de R$100, o refri gratis aparece automaticamente."
+  ].join("\n");
+}
+
 function orderReply(siteUrl, checkoutUrl) {
   return [
     "Fechou. O jeito mais rapido e montar pelo site.",
@@ -396,6 +409,22 @@ function orderReply(siteUrl, checkoutUrl) {
     checkoutUrl || siteUrl,
     "",
     "Depois de finalizar, acompanhe a confirmacao por esta conversa."
+  ].join("\n");
+}
+
+function whatsappOrderReply(siteUrl) {
+  return [
+    "Claro. Pode pedir por aqui tambem.",
+    "",
+    "Me envie nesta ordem:",
+    "Nome:",
+    "Endereco:",
+    "Pedido:",
+    "Pagamento:",
+    "Observacao:",
+    "",
+    "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
+    siteUrl
   ].join("\n");
 }
 
@@ -535,7 +564,7 @@ function isGreeting(text) {
   const exactGreetings = ["oi", "ola", "opa", "bom dia", "boa tarde", "boa noite", "e ai"];
   if (exactGreetings.includes(text)) return true;
 
-  return ["bom dia", "boa tarde", "boa noite", "ola"].some((greeting) => {
+  return ["oi", "ola", "opa", "bom dia", "boa tarde", "boa noite"].some((greeting) => {
     return text.startsWith(`${normalize(greeting)} `);
   });
 }

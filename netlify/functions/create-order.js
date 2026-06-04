@@ -44,6 +44,7 @@ exports.handler = async function handler(event) {
   }
 
   const webhookForward = await forwardToOrderWebhook(normalizedOrder);
+  const printerForward = await forwardToPrinter(normalizedOrder);
   const whatsappNotification = await notifyStore(normalizedOrder);
   const customerLoyaltyNotification = await notifyCustomerLoyalty(normalizedOrder);
 
@@ -54,11 +55,13 @@ exports.handler = async function handler(event) {
     orderSaved: loyaltyResult.orderSaved,
     loyaltySaved: loyaltyResult.loyaltySaved,
     webhookForwarded: webhookForward.ok,
+    printerForwarded: printerForward.ok,
     whatsappNotificationSent: whatsappNotification.ok,
     customerLoyaltyNotificationSent: customerLoyaltyNotification.ok,
     notes: [
       loyaltyResult.error,
       webhookForward.error,
+      printerForward.error,
       whatsappNotification.error,
       customerLoyaltyNotification.error
     ].filter(Boolean)
@@ -385,6 +388,43 @@ async function forwardToOrderWebhook(order) {
   }
 }
 
+async function forwardToPrinter(order) {
+  const url = process.env.BCK_PRINTER_WEBHOOK_URL || process.env.PRINTER_WEBHOOK_URL || process.env.ORDER_PRINTER_WEBHOOK_URL;
+  if (!url) return { ok: false, error: "PRINTER_WEBHOOK_URL not configured" };
+
+  const receiptText = formatPrinterReceipt(order);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "bck_order_print",
+        orderId: order.id,
+        createdAt: order.receivedAt || order.createdAt || new Date().toISOString(),
+        text: receiptText,
+        lines: receiptText.split("\n"),
+        order
+      })
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      console.error("BCK_PRINTER_ERROR", detail);
+      return { ok: false, error: "printer_webhook_failed" };
+    }
+
+    console.log("BCK_PRINTER_SENT", JSON.stringify({
+      orderId: order.id,
+      chars: receiptText.length
+    }));
+    return { ok: true };
+  } catch (error) {
+    console.error("BCK_PRINTER_ERROR", error);
+    return { ok: false, error: "printer_webhook_failed" };
+  }
+}
+
 async function notifyStore(order) {
   const token = process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -489,6 +529,40 @@ function formatOrderMessage(order) {
     ...loyaltyMessageLines(order.loyalty),
     "",
     `Recebido: ${new Date(order.receivedAt || order.createdAt || Date.now()).toLocaleString("pt-BR")}`
+  ].filter(Boolean).join("\n");
+}
+
+function formatPrinterReceipt(order) {
+  const itemLines = order.items.map((item) => {
+    const components = Array.isArray(item.components) ? item.components : [];
+    return [
+      `${item.quantity}x ${item.title}`,
+      components.length ? `  ${components.join(" + ")}` : "",
+      `  Subtotal: ${formatMoney(item.subtotal)}`
+    ].filter(Boolean).join("\n");
+  }).join("\n\n");
+
+  return [
+    "BCK BEER CHICKEN",
+    "NOVO PEDIDO",
+    `#${order.id}`,
+    "------------------------------",
+    `Cliente: ${order.customer.name}`,
+    `Telefone: ${order.customer.phone}`,
+    `Endereco: ${order.customer.address}`,
+    `Obs: ${order.customer.notes || "Sem observacoes"}`,
+    "------------------------------",
+    "ITENS",
+    itemLines,
+    "------------------------------",
+    `Total: ${formatMoney(order.totals.total)}`,
+    `Pagamento: ${order.payment}`,
+    order.paymentInstructions || "",
+    "------------------------------",
+    ...loyaltyMessageLines(order.loyalty),
+    "------------------------------",
+    `Recebido: ${new Date(order.receivedAt || order.createdAt || Date.now()).toLocaleString("pt-BR")}`,
+    ""
   ].filter(Boolean).join("\n");
 }
 

@@ -1,8 +1,8 @@
 window.BCK_CONFIG = {
   storeName: "BCK Beer Chicken",
   city: "Cachoeiro",
-  whatsappNumber: "5528999329677",
-  siteUrl: "https://dashing-bonbon-7e09a1.netlify.app",
+  whatsappNumber: "5528999499025",
+  siteUrl: "https://beerchicken-bck.netlify.app",
   currency: "BRL",
   deliveryFee: 0,
   automation: {
@@ -47,7 +47,7 @@ window.BCK_CONFIG = {
       provider: "whatsapp-cloud-api"
     },
     apiReady: {
-      whatsappCloudApi: false,
+      whatsappCloudApi: true,
       n8nWebhookUrl: "",
       makeWebhookUrl: "",
       whatsappWebhookUrl: "/.netlify/functions/whatsapp-webhook",
