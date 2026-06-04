@@ -139,7 +139,8 @@ function messageText(item) {
 }
 
 function buildAutoReply(message) {
-  const text = normalize(message.text);
+  const rawText = String(message.text || "").trim();
+  const text = normalize(rawText);
   const siteUrl = publicSiteUrl();
   const offersUrl = `${siteUrl}#catalogo`;
   const comboUrl = `${siteUrl}#monte-seu-combo`;
@@ -176,6 +177,10 @@ function buildAutoReply(message) {
 
   if (isChoice(text, "2") || hasAny(text, ["pedido pelo whatsapp", "pedir pelo whatsapp", "whatsapp", "zap", "atendente", "humano", "pessoa", "falar com"])) {
     return whatsappOrderReply(siteUrl);
+  }
+
+  if (isManualOrder(text)) {
+    return manualOrderReceivedReply(rawText);
   }
 
   if (hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas"])) {
@@ -428,6 +433,16 @@ function whatsappOrderReply(siteUrl) {
   ].join("\n");
 }
 
+function manualOrderReceivedReply(orderText) {
+  return [
+    "Certo, recebi seu pedido assim:",
+    "",
+    formatCustomerOrder(orderText),
+    "",
+    "Vou encaminhar para a equipe responsavel conferir tudo e te responder por aqui com a confirmacao."
+  ].join("\n");
+}
+
 function deliveryReply(siteUrl) {
   return [
     `Fazemos delivery em ${CITY} e regiao conforme disponibilidade da noite.`,
@@ -558,6 +573,74 @@ function isAssistantRequest(text) {
 
 function isMenuRequest(text) {
   return ["menu", "opcoes", "opcao", "inicio", "comecar"].includes(text);
+}
+
+function isManualOrder(text) {
+  const wordsCount = text.split(/\s+/).filter(Boolean).length;
+  const explicitFields = [
+    "nome:",
+    "endereco:",
+    "pedido:",
+    "pagamento:",
+    "observacao:",
+    "observacoes:"
+  ].filter((field) => text.includes(field)).length;
+
+  const hasFood = hasAny(text, [
+    "pizza",
+    "frango",
+    "batata",
+    "refri",
+    "refrigerante",
+    "bebida",
+    "combo",
+    "porcao",
+    "carne",
+    "file",
+    "catupiry",
+    "cheddar",
+    "bacon",
+    "calabresa",
+    "borda"
+  ]);
+  const hasAddress = hasAny(text, [
+    "rua",
+    "avenida",
+    "av ",
+    "bairro",
+    "endereco",
+    "numero",
+    "n ",
+    "casa",
+    "apto",
+    "apartamento",
+    "ponto de referencia"
+  ]);
+  const hasPayment = hasAny(text, [
+    "pix",
+    "dinheiro",
+    "cartao",
+    "troco",
+    "maquininha",
+    "pagamento"
+  ]);
+
+  return explicitFields >= 2
+    || (hasFood && hasAddress && wordsCount >= 10)
+    || (hasFood && hasAddress && hasPayment)
+    || (hasFood && hasPayment && wordsCount >= 14);
+}
+
+function formatCustomerOrder(orderText) {
+  const cleaned = String(orderText || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!cleaned) return "Pedido informado na conversa.";
+  if (cleaned.length <= 900) return cleaned;
+
+  return `${cleaned.slice(0, 900).trim()}\n...(pedido muito longo, equipe vai conferir a mensagem completa acima)`;
 }
 
 function isGreeting(text) {
