@@ -435,6 +435,8 @@ function whatsappOrderReply(siteUrl) {
 
 function manualOrderReceivedReply(orderText) {
   return [
+    "pedido novo favor confirmar",
+    "",
     "Certo, recebi seu pedido assim:",
     "",
     formatCustomerOrder(orderText),
