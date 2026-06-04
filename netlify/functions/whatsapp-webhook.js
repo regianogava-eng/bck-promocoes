@@ -342,7 +342,7 @@ function buildAutoReply(message) {
 
 function mainMenu(siteUrl) {
   return [
-    `Oi, boa tarde. Aqui e o atendimento automatico da ${STORE_NAME}.`,
+    `Boa tarde, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
     "E um prazer te atender.",
     "",
     "Como posso te ajudar?",
@@ -357,7 +357,7 @@ function mainMenu(siteUrl) {
 
 function assistantReply(siteUrl) {
   return [
-    `Oi, eu sou a ${AI_ASSISTANT_NAME}, atendente virtual da BCK.`,
+    `Boa tarde, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da BCK.`,
     "",
     "Posso te ajudar a escolher combo, tirar duvida de entrega, explicar pagamento ou mandar o link do pedido.",
     "",
