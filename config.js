@@ -1,7 +1,7 @@
 window.BCK_CONFIG = {
   storeName: "BCK Beer Chicken",
   city: "Cachoeiro",
-  whatsappNumber: "5528999499025",
+  whatsappNumber: "5528999329677",
   siteUrl: "https://beerchicken-bck.netlify.app",
   currency: "BRL",
   deliveryFee: 0,
