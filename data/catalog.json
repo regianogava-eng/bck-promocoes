@@ -254,7 +254,7 @@
     }
   },
   "loyalty": {
-    "enabled": true,
+    "enabled": false,
     "mode": "monthly-purchases",
     "purchaseTarget": 8,
     "rewardTitle": "Pedido gratis",

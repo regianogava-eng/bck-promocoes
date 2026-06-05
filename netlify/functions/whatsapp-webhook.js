@@ -13,6 +13,7 @@ const CITY = process.env.BCK_CITY || "Cachoeiro";
 const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
+const HUMAN_HANDOFF_MINUTES = Math.max(0, Number(process.env.BCK_HUMAN_HANDOFF_MINUTES || 60));
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -42,10 +43,26 @@ exports.handler = async function handler(event) {
   const replies = [];
 
   for (const message of messages) {
+    const normalizedText = normalize(message.text || "");
+    const isNewManualOrder = isManualOrder(normalizedText);
+
+    if (!isNewManualOrder && await isHumanHandoffActive(message.from)) {
+      replies.push({
+        to: message.from,
+        sent: false,
+        reason: "human_handoff_active"
+      });
+      continue;
+    }
+
     const replyText = buildAutoReply(message);
     if (!replyText) continue;
 
     const sent = await sendTextMessage(message.from, replyText);
+    if (sent.ok && isNewManualOrder) {
+      await saveHumanHandoff(message.from, message.id);
+    }
+
     if (sent.ok) {
       console.log("WhatsApp reply sent", JSON.stringify({
         to: maskPhone(message.from),
@@ -540,6 +557,96 @@ async function sendTextMessage(to, body) {
   }
 
   return { ok: true };
+}
+
+async function isHumanHandoffActive(phone) {
+  const handoff = await getHumanHandoff(phone);
+  if (!handoff) return false;
+
+  const expiresAt = Date.parse(handoff.expiresAt || "");
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    return false;
+  }
+
+  console.log("BCK_BIBI_HANDOFF_ACTIVE", JSON.stringify({
+    phone: maskPhone(phone),
+    expiresAt: handoff.expiresAt
+  }));
+
+  return true;
+}
+
+async function getHumanHandoff(phone) {
+  const key = humanHandoffKey(phone);
+  if (!key) return null;
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-handoff");
+    return await store.get(key, { consistency: "strong", type: "json" });
+  } catch (error) {
+    console.error("BCK_BIBI_HANDOFF_READ_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+    return null;
+  }
+}
+
+async function saveHumanHandoff(phone, messageId) {
+  const key = humanHandoffKey(phone);
+  if (!key || !HUMAN_HANDOFF_MINUTES) return;
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + HUMAN_HANDOFF_MINUTES * 60 * 1000).toISOString();
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-handoff");
+    await store.setJSON(key, {
+      phone: onlyDigits(phone),
+      startedAt: now.toISOString(),
+      expiresAt,
+      reason: "manual_order_received",
+      messageId: messageId || null
+    }, {
+      metadata: {
+        phone: onlyDigits(phone),
+        expiresAt
+      }
+    });
+
+    console.log("BCK_BIBI_HANDOFF_SAVED", JSON.stringify({
+      phone: maskPhone(phone),
+      expiresAt
+    }));
+  } catch (error) {
+    console.error("BCK_BIBI_HANDOFF_SAVE_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+  }
+}
+
+async function getBlobStore(name) {
+  const { getStore } = await import("@netlify/blobs");
+  const siteID = process.env.BCK_BLOBS_SITE_ID || process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
+  const token = process.env.BCK_BLOBS_TOKEN || process.env.NETLIFY_BLOBS_TOKEN || process.env.NETLIFY_AUTH_TOKEN;
+
+  if (siteID && token) {
+    return getStore({ name, consistency: "strong", siteID, token });
+  }
+
+  return getStore({ name, consistency: "strong" });
+}
+
+function humanHandoffKey(phone) {
+  const digits = onlyDigits(phone);
+  return digits ? `customers/${digits}` : "";
+}
+
+function onlyDigits(value = "") {
+  return String(value).replace(/\D/g, "");
 }
 
 function normalize(value = "") {
