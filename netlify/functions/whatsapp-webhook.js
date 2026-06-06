@@ -169,11 +169,15 @@ function buildAutoReply(message) {
       "Para agilizar seu pedido, me responda com uma opcao:",
       "",
       "1 - Pedir pelo cardapio",
-      "2 - Pedir pelo WhatsApp",
+      "2 - Fazer pedido comigo",
       "",
       "Veja nosso cardapio:",
       siteUrl
     ].join("\n");
+  }
+
+  if (isManualOrder(text)) {
+    return manualOrderReceivedReply(rawText);
   }
 
   if (isAssistantRequest(text)) {
@@ -194,10 +198,6 @@ function buildAutoReply(message) {
 
   if (isChoice(text, "2") || hasAny(text, ["pedido pelo whatsapp", "pedir pelo whatsapp", "whatsapp", "zap", "atendente", "humano", "pessoa", "falar com"])) {
     return whatsappOrderReply(siteUrl);
-  }
-
-  if (isManualOrder(text)) {
-    return manualOrderReceivedReply(rawText);
   }
 
   if (hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas"])) {
@@ -359,7 +359,7 @@ function buildAutoReply(message) {
 
 function mainMenu(siteUrl) {
   return [
-    `Boa tarde, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
+    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
     "E um prazer te atender.",
     "",
     "Como posso te ajudar?",
@@ -374,7 +374,7 @@ function mainMenu(siteUrl) {
 
 function assistantReply(siteUrl) {
   return [
-    `Boa tarde, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da BCK.`,
+    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
     "",
     "Posso te ajudar a escolher combo, tirar duvida de entrega, explicar pagamento ou mandar o link do pedido.",
     "",
@@ -660,6 +660,22 @@ function normalize(value = "") {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim();
+}
+
+function currentGreeting() {
+  try {
+    const hourText = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hour12: false
+    }).format(new Date());
+    const hour = Number(hourText.replace(/\D/g, ""));
+    if (hour >= 5 && hour < 12) return "Bom dia";
+    if (hour >= 12 && hour < 18) return "Boa tarde";
+    return "Boa noite";
+  } catch {
+    return "Ola";
+  }
 }
 
 function hasAny(text, words) {
