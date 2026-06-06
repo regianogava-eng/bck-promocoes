@@ -144,6 +144,10 @@
       updateImagePreview(elements.productImage.value);
     });
 
+    bindMoneyDigitsInput(elements.comboGiftThreshold);
+    bindMoneyDigitsInput(elements.productPromoPrice);
+    bindMoneyDigitsInput(elements.productOriginalPrice);
+
     elements.productImageFile.addEventListener("change", handleImageSelection);
 
     elements.closeEditorButton.addEventListener("click", closeEditor);
@@ -358,7 +362,7 @@
     elements.comboBuilderTitle.value = settings.title || "";
     elements.comboBuilderDescription.value = settings.description || "";
     elements.comboGiftEnabled.checked = gift.enabled !== false;
-    elements.comboGiftThreshold.value = gift.threshold || "";
+    elements.comboGiftThreshold.value = moneyToDigits(gift.threshold);
     elements.comboGiftTitle.value = gift.title || "";
     elements.comboGiftDescription.value = gift.description || "";
     elements.loyaltyEnabled.checked = Boolean(loyalty.enabled);
@@ -447,8 +451,8 @@
     elements.productImage.value = product.image || "";
     elements.productTitle.value = product.title || "";
     elements.productDescription.value = product.description || "";
-    elements.productPromoPrice.value = product.promoPrice || "";
-    elements.productOriginalPrice.value = product.originalPrice || "";
+    elements.productPromoPrice.value = moneyToDigits(product.promoPrice);
+    elements.productOriginalPrice.value = moneyToDigits(product.originalPrice);
     elements.productBadge.value = product.badge || "";
     elements.productBadgeType.value = product.badgeType || "hot";
     elements.productActive.checked = product.active !== false;
@@ -506,7 +510,7 @@
       groups: Array.isArray(current.groups) && current.groups.length ? current.groups : DEFAULT_COMBO_GROUPS,
       freeGift: {
         enabled: elements.comboGiftEnabled.checked,
-        threshold: toNumber(elements.comboGiftThreshold.value || currentGift.threshold || 100),
+        threshold: moneyDigitsToNumberOrFallback(elements.comboGiftThreshold.value, currentGift.threshold || 100),
         title: elements.comboGiftTitle.value.trim() || "Refri gratis",
         description: elements.comboGiftDescription.value.trim(),
         itemId: currentGift.itemId || "refri-gelado"
@@ -522,7 +526,7 @@
       historySource: currentLoyalty.historySource || "netlify-blobs"
     };
 
-    markDirty("Regras do combo atualizadas. Falta salvar no site.");
+    markDirty("Regras do combo atualizadas. Agora clique em Salvar no site para publicar.");
     renderComboSettings();
   }
 
@@ -537,8 +541,8 @@
     product.id = product.id || makeId(product.title);
     product.description = elements.productDescription.value.trim();
     product.image = elements.productImage.value.trim();
-    product.promoPrice = toNumber(elements.productPromoPrice.value);
-    product.originalPrice = toNumber(elements.productOriginalPrice.value);
+    product.promoPrice = moneyDigitsToNumber(elements.productPromoPrice.value);
+    product.originalPrice = moneyDigitsToNumber(elements.productOriginalPrice.value);
     product.badge = elements.productBadge.value.trim();
     product.badgeType = elements.productBadgeType.value || "hot";
     product.active = elements.productActive.checked;
@@ -555,7 +559,7 @@
       product.categories = ["combos"];
     }
 
-    markDirty("Alteracao aplicada. Falta salvar no site.");
+    markDirty("Alteracao aplicada. Agora clique em Salvar no site para publicar.");
     closeEditor();
     renderAll();
   }
@@ -1085,6 +1089,47 @@
 
     var number = Number(normalized);
     return Number.isFinite(number) ? number : 0;
+  }
+
+  function bindMoneyDigitsInput(input) {
+    if (!input) {
+      return;
+    }
+
+    input.addEventListener("input", function () {
+      var digits = onlyDigits(input.value);
+      if (input.value !== digits) {
+        input.value = digits;
+      }
+    });
+  }
+
+  function moneyToDigits(value) {
+    var number = toNumber(value);
+    if (!number) {
+      return "";
+    }
+    return String(Math.round(number * 100));
+  }
+
+  function moneyDigitsToNumber(value) {
+    var digits = onlyDigits(value);
+    if (!digits) {
+      return 0;
+    }
+    return Number(digits) / 100;
+  }
+
+  function moneyDigitsToNumberOrFallback(value, fallback) {
+    var digits = onlyDigits(value);
+    if (!digits) {
+      return toNumber(fallback);
+    }
+    return Number(digits) / 100;
+  }
+
+  function onlyDigits(value) {
+    return String(value || "").replace(/\D/g, "");
   }
 
   function formatCurrency(value) {

@@ -367,6 +367,14 @@ textarea {
   resize: vertical;
 }
 
+.field-hint {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+  opacity: 0.78;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
