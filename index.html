@@ -187,15 +187,15 @@
         <div class="checkout-layout">
           <div class="checkout-copy">
             <span class="eyebrow">Checkout simples</span>
-            <h2 id="checkout-title">Finalize com dados de entrega e pagamento.</h2>
+            <h2 id="checkout-title">Finalize seu pedido pelo WhatsApp.</h2>
             <p>
-              O pedido sai estruturado para o WhatsApp da loja agora, e o código já fica preparado para API, pagamento online,
-              impressão automática e painel de pedidos.
+              Adicione os produtos ao carrinho, preencha seus dados e envie. A equipe da BCK confere tudo e responde por aqui
+              com a confirmação do pedido.
             </p>
             <ul class="future-list">
-              <li>Eventos: view_item, add_to_cart, begin_checkout e purchase/lead.</li>
-              <li>Integração futura: backend/API, Pix automático e painel administrativo.</li>
-              <li>Campos prontos: cliente, telefone, endereço, observações e pagamento.</li>
+              <li>Informe rua, número, bairro e ponto de referência.</li>
+              <li>Se for dinheiro, coloque nas observações se precisa de troco.</li>
+              <li>Se tiver alguma preferência no pedido, escreva antes de enviar.</li>
             </ul>
             <div class="ai-assistant-card" data-ai-assistant-card>
               <span data-ai-assistant-short>Bibi IA</span>
@@ -211,7 +211,7 @@
 
           <form class="checkout-form" data-checkout-form>
             <label>
-              Nome
+              Nome do cliente
               <input name="customerName" type="text" autocomplete="name" placeholder="Seu nome" required>
             </label>
             <label>
@@ -219,12 +219,12 @@
               <input name="phone" type="tel" autocomplete="tel" placeholder="(28) 99999-9999" required>
             </label>
             <label class="form-field--full">
-              Endereço de entrega
-              <input name="address" type="text" autocomplete="street-address" placeholder="Rua, número, bairro e referência" required>
+              Endereço completo
+              <input name="address" type="text" autocomplete="street-address" placeholder="Rua, número, bairro e ponto de referência" required>
             </label>
             <label class="form-field--full">
-              Observações
-              <textarea name="notes" rows="3" placeholder="Ex: sem cebola, troco para R$ 100, ponto da carne..."></textarea>
+              Observações do pedido
+              <textarea name="notes" rows="3" placeholder="Ex: sem cebola, troco para R$ 100, retirar no balcão..."></textarea>
             </label>
             <fieldset class="payment-field form-field--full">
               <legend>Forma de pagamento</legend>

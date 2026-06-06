@@ -365,7 +365,7 @@ function mainMenu(siteUrl) {
     "Como posso te ajudar?",
     "",
     "1 - Pedir pelo cardapio",
-    "2 - Pedir pelo WhatsApp",
+    "2 - Fazer pedido comigo",
     "",
     "Veja nosso cardapio:",
     siteUrl
@@ -436,14 +436,17 @@ function orderReply(siteUrl, checkoutUrl) {
 
 function whatsappOrderReply(siteUrl) {
   return [
-    "Claro. Pode pedir por aqui tambem.",
+    "Claro. Pode fazer seu pedido comigo por aqui.",
     "",
-    "Me envie nesta ordem:",
+    "Eu vou organizar as informacoes e enviar para o setor responsavel confirmar tudo com voce.",
+    "",
+    "Para montar certinho, me mande por favor:",
     "Nome:",
-    "Endereco:",
+    "Endereco completo:",
+    "Bairro ou ponto de referencia:",
     "Pedido:",
-    "Pagamento:",
-    "Observacao:",
+    "Forma de pagamento:",
+    "Observacao, se tiver:",
     "",
     "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
     siteUrl
@@ -466,15 +469,17 @@ function manualOrderReceivedReply(orderText) {
 
 function deliveryReply(siteUrl) {
   return [
-    `Fazemos delivery em ${CITY} e regiao conforme disponibilidade da noite.`,
+    `Pode fazer seu pedido comigo por aqui. A entrega em ${CITY} e regiao sera confirmada pelo setor responsavel.`,
     "",
-    "Para evitar atraso, coloque no pedido:",
-    "- Rua e numero",
-    "- Bairro",
-    "- Ponto de referencia",
-    "- Observacao se precisar",
+    "Para encaminhar certinho, me mande por favor:",
+    "Nome:",
+    "Endereco completo:",
+    "Bairro ou ponto de referencia:",
+    "Pedido:",
+    "Forma de pagamento:",
+    "Observacao, se tiver:",
     "",
-    "Monte o pedido aqui e envie completo:",
+    "Se preferir, monte pelo cardapio e envie o pedido completo:",
     siteUrl
   ].join("\n");
 }
