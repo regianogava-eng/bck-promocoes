@@ -5,6 +5,7 @@ const COMBO_BUILDER_FALLBACK_GROUPS = [
   { key: "batata", label: "Batata", source: "batatas", required: true },
   { key: "bebida", label: "Bebida", source: "bebidas", required: true }
 ];
+const CATALOG_API_URL = "/.netlify/functions/get-catalog";
 
 let catalog = normalizeCatalog(window.BCK_CATALOG || { categories: [], products: [] });
 
@@ -151,17 +152,29 @@ function activeProducts() {
 }
 
 async function loadCatalogData() {
+  const liveLoaded = await loadCatalogFrom(CATALOG_API_URL + "?v=" + Date.now());
+  if (liveLoaded) {
+    return;
+  }
+
+  await loadCatalogFrom("data/catalog.json");
+}
+
+async function loadCatalogFrom(url) {
   try {
-    const response = await fetch("data/catalog.json", { cache: "no-store" });
-    if (!response.ok) return;
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return false;
 
     const remoteCatalog = normalizeCatalog(await response.json());
     if (remoteCatalog.categories.length && remoteCatalog.products.length) {
       catalog = remoteCatalog;
+      return true;
     }
   } catch (error) {
     console.info("Usando catálogo local de fallback.", error);
   }
+
+  return false;
 }
 
 function productById(id) {

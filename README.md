@@ -6,14 +6,18 @@ Mini ecommerce estatico em HTML, CSS e JavaScript, com carrinho, checkout, paine
 
 - Site publico: `/`
 - Admin Decap CMS: `/admin/`
-- Catalogo editavel: `data/catalog.json`
+- Catalogo base: `data/catalog.json`
+- Catalogo ao vivo: Netlify Blobs via `/.netlify/functions/get-catalog`
 - Configuracoes do site: `config.js`
 - Pedido API futura: `/.netlify/functions/create-order`
 - Webhook WhatsApp: `/.netlify/functions/whatsapp-webhook`
 
 ## Admin
 
-O `/admin/` usa Netlify Identity + Git Gateway para salvar alteracoes reais no GitHub.
+O `/admin/` usa Netlify Identity para salvar preco, texto, status, combo e regras no Netlify Blobs.
+Essas alteracoes entram no site ao vivo sem gerar novo deploy.
+
+O Git Gateway continua disponivel para arquivos, como fotos novas, e para manter `data/catalog.json` como base/backup do projeto.
 
 Edicao disponivel:
 
@@ -28,6 +32,20 @@ Edicao disponivel:
 - componentes do combo
 - prioridade de exibicao
 
+Endpoints usados pelo catalogo ao vivo:
+
+```text
+/.netlify/functions/get-catalog
+/.netlify/functions/save-catalog
+```
+
+Variaveis usadas pelo Netlify Blobs:
+
+```text
+BCK_BLOBS_SITE_ID=id_do_site_no_netlify
+BCK_BLOBS_TOKEN=token_pessoal_do_netlify
+```
+
 ## WhatsApp Cloud API
 
 Nunca coloque token da Meta dentro de `config.js`, `app.js` ou qualquer arquivo publico.
@@ -40,7 +58,7 @@ WHATSAPP_PHONE_NUMBER_ID=1153856107808696
 WHATSAPP_API_VERSION=v25.0
 WHATSAPP_VERIFY_TOKEN=crie_um_codigo_secreto_e_repita_na_meta
 BCK_STORE_NOTIFY_NUMBER=5528999329677
-SITE_URL=https://dashing-bonbon-7e09a1.netlify.app
+SITE_URL=https://beerchicken-bck.netlify.app
 ORDER_WEBHOOK_URL=
 META_APP_SECRET=
 BCK_OPERATING_HOURS=Todos os dias, das 17h as 00h
@@ -51,7 +69,7 @@ BCK_AI_ASSISTANT_KEYWORD=BIBI
 No painel da Meta, o callback do webhook deve ser:
 
 ```text
-https://dashing-bonbon-7e09a1.netlify.app/.netlify/functions/whatsapp-webhook
+https://beerchicken-bck.netlify.app/.netlify/functions/whatsapp-webhook
 ```
 
 O verify token deve ser exatamente o mesmo valor de `WHATSAPP_VERIFY_TOKEN`.
@@ -107,6 +125,8 @@ Deixe `LOYALTY_SEND_CUSTOMER_WHATSAPP=false` ate ter certeza de que a conta da M
 
 ## Publicacao
 
-Suba somente a pasta `FINAL-BCK-NETLIFY` para o repositorio GitHub conectado ao Netlify.
+Suba somente a pasta do projeto para o repositorio GitHub conectado ao Netlify.
+
+Deploy agora deve acontecer para mudanca de codigo, layout, funcoes e fotos. Edicoes comuns de catalogo no admin sao salvas no Blobs e nao precisam de deploy.
 
 Nao precisa gerar ZIP.

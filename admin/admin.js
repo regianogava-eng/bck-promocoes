@@ -3,6 +3,8 @@
 
   var BRANCH = "main";
   var CATALOG_PATH = "data/catalog.json";
+  var CATALOG_API_URL = "/.netlify/functions/get-catalog";
+  var SAVE_CATALOG_API_URL = "/.netlify/functions/save-catalog";
   var IMAGE_DIR = "assets/images";
   var GIT_ROOT = "/.netlify/git/github";
   var DEFAULT_COMBO_GROUPS = [
@@ -176,8 +178,7 @@
     window.netlifyIdentity.on("login", function () {
       window.netlifyIdentity.close();
       setSession(true);
-      showNotice("Login feito. Agora voce pode salvar no GitHub.", "ok");
-      refreshCatalogSha();
+      showNotice("Login feito. Agora voce pode salvar o catalogo ao vivo.", "ok");
     });
 
     window.netlifyIdentity.on("logout", function () {
@@ -199,23 +200,34 @@
   async function loadCatalogFromPublic() {
     setBusy("Carregando catalogo...");
     try {
-      var response = await fetch("/" + CATALOG_PATH + "?v=" + Date.now(), { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error("Nao consegui carregar o catalogo.");
-      }
-
-      state.catalog = normalizeCatalog(await response.json());
+      state.catalog = normalizeCatalog(await fetchCatalog());
       state.pendingImages = {};
       state.dirty = false;
-      await refreshCatalogSha();
       renderAll();
       setReady("Catalogo carregado");
-      showNotice("Painel pronto. Edite os cards e clique em Salvar no site.", "ok");
+      showNotice("Painel pronto. Precos e textos salvam ao vivo, sem deploy.", "ok");
     } catch (error) {
       console.error(error);
       setReady("Erro ao carregar");
       showNotice(error.message || "Erro ao carregar o catalogo.", "error");
     }
+  }
+
+  async function fetchCatalog() {
+    var liveResponse = await fetch(CATALOG_API_URL + "?v=" + Date.now(), { cache: "no-store" }).catch(function () {
+      return null;
+    });
+
+    if (liveResponse && liveResponse.ok) {
+      return liveResponse.json();
+    }
+
+    var staticResponse = await fetch("/" + CATALOG_PATH + "?v=" + Date.now(), { cache: "no-store" });
+    if (!staticResponse.ok) {
+      throw new Error("Nao consegui carregar o catalogo.");
+    }
+
+    return staticResponse.json();
   }
 
   async function refreshCatalogSha() {
@@ -526,7 +538,7 @@
       historySource: currentLoyalty.historySource || "netlify-blobs"
     };
 
-    markDirty("Regras do combo atualizadas. Agora clique em Salvar no site para publicar.");
+    markDirty("Regras do combo atualizadas. Agora clique em Salvar ao vivo.");
     renderComboSettings();
   }
 
@@ -559,7 +571,7 @@
       product.categories = ["combos"];
     }
 
-    markDirty("Alteracao aplicada. Agora clique em Salvar no site para publicar.");
+    markDirty("Alteracao aplicada. Agora clique em Salvar ao vivo.");
     closeEditor();
     renderAll();
   }
@@ -583,7 +595,7 @@
     state.pendingImages[state.editingId] = file;
     elements.productImage.value = path;
     updateImagePreview(URL.createObjectURL(file));
-    markDirty("Foto escolhida. Clique em Aplicar e depois Salvar no site.");
+    markDirty("Foto escolhida. Clique em Aplicar e depois Salvar ao vivo.");
   }
 
   function updateImagePreview(path) {
@@ -661,22 +673,31 @@
 
       var cleanCatalog = validateCatalogForSave(state.catalog);
       var catalogJson = JSON.stringify(cleanCatalog, null, 2) + "\n";
-      var latest = await gitGetFile(CATALOG_PATH).catch(function () {
-        return { sha: state.catalogSha };
-      });
-
-      await gitPutFile(CATALOG_PATH, catalogJson, latest.sha, "Update BCK catalog from custom admin");
-      state.catalogSha = null;
+      await saveCatalogToLiveStore(catalogJson);
       state.pendingImages = {};
       state.dirty = false;
-      await refreshCatalogSha();
-      setReady("Salvo no GitHub");
-      showNotice("Salvo. O Netlify vai publicar no site em alguns segundos.", "ok");
+      setReady("Salvo ao vivo");
+      showNotice("Salvo. O site ja carrega estes dados sem fazer novo deploy.", "ok");
     } catch (error) {
       console.error(error);
       setReady("Erro ao salvar");
       showNotice(readableError(error), "error");
     }
+  }
+
+  async function saveCatalogToLiveStore(catalogJson) {
+    var response = await fetch(SAVE_CATALOG_API_URL, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, await gitHeaders()),
+      body: catalogJson
+    });
+
+    if (!response.ok) {
+      var text = await response.text();
+      throw new Error(text || "O armazenamento ao vivo recusou o salvamento.");
+    }
+
+    return response.json();
   }
 
   function validateCatalog() {
@@ -1221,6 +1242,14 @@
 
     if (message.toLowerCase().indexOf("git gateway") >= 0) {
       return "O Git Gateway recusou o salvamento. Tente sair e entrar de novo, ou use o Decap antigo como backup.";
+    }
+
+    if (message.toLowerCase().indexOf("identity_required") >= 0 || message.indexOf("401") >= 0) {
+      return "Entre no painel antes de salvar o catalogo ao vivo.";
+    }
+
+    if (message.toLowerCase().indexOf("catalog_storage_unavailable") >= 0) {
+      return "Nao consegui salvar no catalogo ao vivo. Confira as variaveis BCK_BLOBS_SITE_ID e BCK_BLOBS_TOKEN no Netlify.";
     }
 
     return message || "Nao consegui salvar agora.";

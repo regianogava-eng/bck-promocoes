@@ -5,8 +5,8 @@ backend:
 media_folder: "assets/images"
 public_folder: "/assets/images"
 
-site_url: "https://jovial-vacherin-8c5599.netlify.app"
-display_url: "https://jovial-vacherin-8c5599.netlify.app"
+site_url: "https://beerchicken-bck.netlify.app"
+display_url: "https://beerchicken-bck.netlify.app"
 logo_url: "/assets/images/hero-bck-feast-mobile.webp"
 
 collections:
