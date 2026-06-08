@@ -14,6 +14,7 @@ const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const HUMAN_HANDOFF_MINUTES = Math.max(0, Number(process.env.BCK_HUMAN_HANDOFF_MINUTES || 60));
+const ORDER_DRAFT_MINUTES = Math.max(5, Number(process.env.BCK_ORDER_DRAFT_MINUTES || 30));
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -44,7 +45,10 @@ exports.handler = async function handler(event) {
 
   for (const message of messages) {
     const normalizedText = normalize(message.text || "");
-    const isNewManualOrder = isManualOrder(normalizedText);
+    const rawText = String(message.text || "").trim();
+    let isNewManualOrder = isManualOrder(normalizedText);
+    let replyText = "";
+    const orderDraft = isNewManualOrder ? null : await getOrderDraft(message.from);
 
     if (!isNewManualOrder && await isHumanHandoffActive(message.from)) {
       replies.push({
@@ -55,12 +59,21 @@ exports.handler = async function handler(event) {
       continue;
     }
 
-    const replyText = buildAutoReply(message);
+    if (orderDraft && isDraftCompletion(normalizedText)) {
+      replyText = manualOrderReceivedReply([orderDraft.text, rawText].filter(Boolean).join("\n"));
+      isNewManualOrder = true;
+    } else {
+      replyText = buildAutoReply(message);
+    }
+
     if (!replyText) continue;
 
     const sent = await sendTextMessage(message.from, replyText);
     if (sent.ok && isNewManualOrder) {
       await saveHumanHandoff(message.from, message.id);
+      await deleteOrderDraft(message.from);
+    } else if (sent.ok && isOrderDraft(normalizedText)) {
+      await saveOrderDraft(message.from, rawText, message.id);
     }
 
     if (sent.ok) {
@@ -180,8 +193,48 @@ function buildAutoReply(message) {
     return manualOrderReceivedReply(rawText);
   }
 
+  if (isOrderDraft(text)) {
+    return orderDraftReply(rawText, siteUrl);
+  }
+
+  if (isChoice(text, "5") || isHumanRequest(text)) {
+    return humanReply();
+  }
+
+  if (isRepeatOrderRequest(text)) {
+    return repeatOrderReply(siteUrl);
+  }
+
+  if (isPickupRequest(text)) {
+    return pickupReply(siteUrl);
+  }
+
+  if (isGiftQuestion(text)) {
+    return giftReply(comboUrl);
+  }
+
+  if (isPriceQuestion(text)) {
+    return priceReply(siteUrl);
+  }
+
+  if (isPizzaFlavorQuestion(text)) {
+    return pizzaFlavorReply(siteUrl);
+  }
+
+  if (isCustomizationQuestion(text)) {
+    return customizationReply(siteUrl);
+  }
+
   if (isAssistantRequest(text)) {
     return assistantReply(siteUrl);
+  }
+
+  if (isOrderHelpRequest(text)) {
+    return orderHelpReply(siteUrl);
+  }
+
+  if (isOrderStartRequest(text)) {
+    return whatsappOrderReply(siteUrl);
   }
 
   if (isMenuRequest(text)) {
@@ -196,7 +249,7 @@ function buildAutoReply(message) {
     return catalogReply(siteUrl, offersUrl, comboUrl);
   }
 
-  if (isChoice(text, "2") || hasAny(text, ["pedido pelo whatsapp", "pedir pelo whatsapp", "whatsapp", "zap", "atendente", "humano", "pessoa", "falar com"])) {
+  if (isChoice(text, "2") || hasAny(text, ["pedido pelo whatsapp", "pedir pelo whatsapp", "whatsapp", "zap", "fazer pedido comigo", "pedir com voce"])) {
     return whatsappOrderReply(siteUrl);
   }
 
@@ -453,17 +506,161 @@ function whatsappOrderReply(siteUrl) {
   ].join("\n");
 }
 
-function manualOrderReceivedReply(orderText) {
+function orderHelpReply(siteUrl) {
   return [
+    "Claro, eu te ajudo.",
+    "",
+    "Voce pode pedir de dois jeitos:",
+    "",
+    "1 - Pelo cardapio online, montando o carrinho:",
+    siteUrl,
+    "",
+    "2 - Direto por aqui no WhatsApp. Nesse caso, me mande:",
+    "Nome:",
+    "Endereco completo:",
+    "Bairro ou ponto de referencia:",
+    "Pedido:",
+    "Forma de pagamento:",
+    "Troco ou observacao, se tiver:",
+    "",
+    "Depois eu encaminho para o setor responsavel confirmar tudo com voce."
+  ].join("\n");
+}
+
+function orderDraftReply(orderText, siteUrl) {
+  return [
+    "Certo, ja entendi que voce quer fazer um pedido.",
+    "",
+    "Recebi assim:",
+    formatCustomerOrder(orderText),
+    "",
+    "Para eu encaminhar certinho ao setor responsavel, me mande por favor:",
+    "Nome:",
+    "Endereco completo:",
+    "Bairro ou ponto de referencia:",
+    "Forma de pagamento:",
+    "Troco, se precisar:",
+    "Observacao, se tiver:",
+    "",
+    "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
+    siteUrl
+  ].join("\n");
+}
+
+function manualOrderReceivedReply(orderText) {
+  const lines = [
     "pedido novo favor confirmar",
     "",
     "Certo, recebi seu pedido assim:",
     "",
     formatCustomerOrder(orderText),
     "",
-    "Vou encaminhar para a equipe responsavel conferir tudo e te responder por aqui com a confirmacao.",
+    "Vou encaminhar para a equipe responsavel conferir tudo e te responder por aqui com a confirmacao."
+  ];
+
+  if (hasAny(normalize(orderText), ["pix"])) {
+    lines.push(
+      "",
+      "Como o pagamento e Pix, aguarde a equipe confirmar o valor e a chave antes de enviar o comprovante."
+    );
+  }
+
+  lines.push("", "pedido novo favor confirmar");
+
+  return lines.join("\n");
+}
+
+function humanReply() {
+  return [
+    "Certo. Vou deixar sua conversa para o setor responsavel acompanhar.",
     "",
-    "pedido novo favor confirmar"
+    "Se for pedido novo, pode mandar a mensagem completa aqui com nome, endereco, pedido e pagamento.",
+    "",
+    "A equipe confere tudo e te responde por aqui com a confirmacao."
+  ].join("\n");
+}
+
+function repeatOrderReply(siteUrl) {
+  return [
+    "Consigo te ajudar, mas eu ainda nao puxo automaticamente o pedido anterior.",
+    "",
+    "Me mande o pedido de novo ou escreva algo como:",
+    "Nome:",
+    "Endereco completo:",
+    "Pedido igual ao anterior:",
+    "Forma de pagamento:",
+    "",
+    "A equipe confere e confirma por aqui.",
+    "",
+    "Cardapio:",
+    siteUrl
+  ].join("\n");
+}
+
+function pickupReply(siteUrl) {
+  return [
+    "Da para pedir e combinar retirada, sim.",
+    "",
+    "Monte o pedido ou me envie por aqui com nome, pedido e forma de pagamento.",
+    "O setor responsavel confirma horario e retirada com voce antes de preparar.",
+    "",
+    "Cardapio:",
+    siteUrl
+  ].join("\n");
+}
+
+function giftReply(comboUrl) {
+  return [
+    "No Monte seu Combo, pedido acima de R$100 libera refri gratis automaticamente quando a regra estiver ativa.",
+    "",
+    "Monte aqui e confira o total na hora:",
+    comboUrl,
+    "",
+    "Depois envie o pedido por este WhatsApp para a equipe confirmar tudo."
+  ].join("\n");
+}
+
+function priceReply(siteUrl) {
+  return [
+    "Para valor certinho, o melhor caminho e conferir no cardapio, porque preco e disponibilidade podem mudar durante o dia.",
+    "",
+    "No site voce monta o carrinho e ve o total antes de enviar:",
+    siteUrl,
+    "",
+    "Se quiser pedir por aqui, me mande o pedido completo que eu encaminho para o setor responsavel confirmar."
+  ].join("\n");
+}
+
+function pizzaFlavorReply(siteUrl) {
+  return [
+    "Sobre sabores, borda e pizza meio a meio: a equipe confirma conforme a disponibilidade do dia.",
+    "",
+    "Pode me mandar do jeito que voce quer, por exemplo:",
+    "Pizza meio a meio calabresa e frango com catupiry",
+    "Borda recheada",
+    "Refri",
+    "",
+    "Eu encaminho para o setor responsavel conferir e confirmar com voce.",
+    "",
+    "Cardapio:",
+    siteUrl
+  ].join("\n");
+}
+
+function customizationReply(siteUrl) {
+  return [
+    "Pode mandar observacao do pedido, sim.",
+    "",
+    "Exemplos:",
+    "- sem cebola",
+    "- sem batata",
+    "- trocar bebida",
+    "- preciso de troco",
+    "",
+    "Mudanca de item, valor ou disponibilidade sempre sera confirmada pelo setor responsavel antes de preparar.",
+    "",
+    "Cardapio:",
+    siteUrl
   ].join("\n");
 }
 
@@ -633,6 +830,78 @@ async function saveHumanHandoff(phone, messageId) {
   }
 }
 
+async function getOrderDraft(phone) {
+  const key = humanHandoffKey(phone);
+  if (!key) return null;
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-order-drafts");
+    const draft = await store.get(key, { consistency: "strong", type: "json" });
+    if (!draft) return null;
+
+    const expiresAt = Date.parse(draft.expiresAt || "");
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      await store.delete(key).catch(() => {});
+      return null;
+    }
+
+    return draft;
+  } catch (error) {
+    console.error("BCK_BIBI_DRAFT_READ_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+    return null;
+  }
+}
+
+async function saveOrderDraft(phone, text, messageId) {
+  const key = humanHandoffKey(phone);
+  if (!key || !text) return;
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ORDER_DRAFT_MINUTES * 60 * 1000).toISOString();
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-order-drafts");
+    await store.setJSON(key, {
+      phone: onlyDigits(phone),
+      text: String(text || "").slice(0, 1200),
+      startedAt: now.toISOString(),
+      expiresAt,
+      messageId: messageId || null
+    }, {
+      metadata: {
+        phone: onlyDigits(phone),
+        expiresAt
+      }
+    });
+  } catch (error) {
+    console.error("BCK_BIBI_DRAFT_SAVE_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+  }
+}
+
+async function deleteOrderDraft(phone) {
+  const key = humanHandoffKey(phone);
+  if (!key) return;
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-order-drafts");
+    await store.delete(key);
+  } catch (error) {
+    console.error("BCK_BIBI_DRAFT_DELETE_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+  }
+}
+
 async function getBlobStore(name) {
   const { getStore } = await import("@netlify/blobs");
   const siteID = process.env.BCK_BLOBS_SITE_ID || process.env.NETLIFY_SITE_ID || process.env.SITE_ID;
@@ -707,7 +976,7 @@ function isMenuRequest(text) {
   return ["menu", "opcoes", "opcao", "inicio", "comecar"].includes(text);
 }
 
-function isManualOrder(text) {
+function orderSignals(text) {
   const wordsCount = text.split(/\s+/).filter(Boolean).length;
   const explicitFields = [
     "nome:",
@@ -733,16 +1002,18 @@ function isManualOrder(text) {
     "cheddar",
     "bacon",
     "calabresa",
-    "borda"
+    "borda",
+    "mussarela",
+    "mucarela",
+    "queijo"
   ]);
-  const hasAddress = hasAny(text, [
+  const hasAddressKeyword = hasAny(text, [
     "rua",
     "avenida",
     "av ",
     "bairro",
     "endereco",
     "numero",
-    "n ",
     "casa",
     "apto",
     "apartamento",
@@ -754,13 +1025,197 @@ function isManualOrder(text) {
     "cartao",
     "troco",
     "maquininha",
-    "pagamento"
+    "pagamento",
+    "debito",
+    "credito"
   ]);
+  const hasOrderVerb = hasAny(text, [
+    "quero",
+    "queria",
+    "vou querer",
+    "manda",
+    "me ve",
+    "fazer pedido",
+    "pedir",
+    "pedido",
+    "comprar"
+  ]);
+  const numericParts = text.match(/\b\d{1,5}\b/g) || [];
+  const hasAddressNumber = numericParts.length > 0
+    && wordsCount >= 6
+    && !hasAny(text, [
+      "fatias",
+      "pedacos",
+      "pedaco",
+      "litro",
+      "1/5",
+      "500g",
+      "500 gramas"
+    ])
+    && !(numericParts.length === 1 && hasAny(text, ["troco", "reais", "real"]));
+  const hasAddress = hasAddressKeyword || hasAddressNumber;
 
-  return explicitFields >= 2
-    || (hasFood && hasAddress && wordsCount >= 10)
-    || (hasFood && hasAddress && hasPayment)
-    || (hasFood && hasPayment && wordsCount >= 14);
+  return {
+    wordsCount,
+    explicitFields,
+    hasFood,
+    hasAddress,
+    hasPayment,
+    hasOrderVerb
+  };
+}
+
+function isManualOrder(text) {
+  const signals = orderSignals(text);
+
+  return signals.explicitFields >= 2
+    || (signals.hasFood && signals.hasAddress && signals.wordsCount >= 10)
+    || (signals.hasFood && signals.hasAddress && signals.hasPayment)
+    || (signals.hasFood && signals.hasPayment && signals.wordsCount >= 10);
+}
+
+function isOrderDraft(text) {
+  const signals = orderSignals(text);
+
+  return signals.explicitFields >= 1
+    || (signals.hasFood && signals.hasOrderVerb)
+    || (signals.hasFood && signals.hasPayment)
+    || hasAny(text, ["meu pedido", "pedido novo"]);
+}
+
+function isOrderHelpRequest(text) {
+  return hasAny(text, [
+    "nao entendi",
+    "nao sei pedir",
+    "nao sei fazer pedido",
+    "como pedir",
+    "como faco pedido",
+    "como fazer pedido",
+    "como funciona o pedido",
+    "forma de fazer o pedido",
+    "me ajuda a pedir",
+    "ajuda pedido",
+    "onde pedir",
+    "onde faco pedido"
+  ]);
+}
+
+function isOrderStartRequest(text) {
+  return hasAny(text, [
+    "quero fazer pedido",
+    "queria fazer pedido",
+    "fazer pedido",
+    "fazer um pedido",
+    "quero pedir",
+    "queria pedir",
+    "pedir por aqui",
+    "pedido pelo whatsapp",
+    "pedir pelo whatsapp",
+    "fazer pedido comigo",
+    "pedir com voce"
+  ]);
+}
+
+function isDraftCompletion(text) {
+  const signals = orderSignals(text);
+  if (isClarifyingQuestion(text)) return false;
+
+  const hasDeliveryDetails = signals.hasAddress
+    || hasAny(text, [
+      "referencia",
+      "referencia:",
+      "portao",
+      "proximo",
+      "perto",
+      "esquina",
+      "retirar",
+      "retirada",
+      "buscar"
+    ]);
+
+  return signals.explicitFields >= 1
+    || (hasDeliveryDetails && signals.hasPayment)
+    || (hasDeliveryDetails && signals.wordsCount >= 5);
+}
+
+function isClarifyingQuestion(text) {
+  return text.includes("?")
+    || hasAny(text, [
+      "quanto",
+      "qual valor",
+      "qual preco",
+      "aceita",
+      "tem ",
+      "pode",
+      "consegue",
+      "entrega",
+      "taxa",
+      "funciona",
+      "aberto"
+    ]);
+}
+
+function isHumanRequest(text) {
+  return hasAny(text, [
+    "humano",
+    "atendente",
+    "pessoa",
+    "responsavel",
+    "falar com alguem",
+    "falar com uma pessoa",
+    "falar com atendente"
+  ]);
+}
+
+function isRepeatOrderRequest(text) {
+  return hasAny(text, [
+    "mesmo pedido",
+    "pedido de ontem",
+    "igual ontem",
+    "igual ao anterior",
+    "repetir pedido",
+    "repete o pedido"
+  ]);
+}
+
+function isPickupRequest(text) {
+  return hasAny(text, [
+    "retirar",
+    "retirada",
+    "buscar",
+    "pegar ai",
+    "pegar no local",
+    "balcao",
+    "no local"
+  ]);
+}
+
+function isGiftQuestion(text) {
+  return hasAny(text, ["brinde", "gratis", "gratuito", "refri gratis", "acima de 100", "mais de 100"]);
+}
+
+function isPriceQuestion(text) {
+  return hasAny(text, ["quanto fica", "quanto da", "qual valor", "valor", "preco", "precos", "total", "muda o preco"]);
+}
+
+function isPizzaFlavorQuestion(text) {
+  return hasAny(text, ["meio a meio", "meia a meia", "dois sabores", "2 sabores", "sabor", "sabores"]);
+}
+
+function isCustomizationQuestion(text) {
+  return hasAny(text, [
+    "sem ",
+    "tirar",
+    "retirar",
+    "trocar",
+    "troca",
+    "substituir",
+    "nao quero",
+    "observacao",
+    "alergia",
+    "alergico",
+    "intolerancia"
+  ]);
 }
 
 function formatCustomerOrder(orderText) {
@@ -799,5 +1254,14 @@ function json(statusCode, payload) {
     statusCode,
     headers: JSON_HEADERS,
     body: JSON.stringify(payload)
+  };
+}
+
+if (process.env.NODE_ENV === "test") {
+  exports._test = {
+    buildAutoReply,
+    isManualOrder,
+    isOrderDraft,
+    isDraftCompletion
   };
 }
