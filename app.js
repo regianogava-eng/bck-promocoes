@@ -634,6 +634,16 @@ function metaPixelPayload(payload = {}) {
   };
 }
 
+function sendMetaPixelStandardEvent(eventName, payload) {
+  const pixelId = config.marketing?.metaPixelId;
+  if (isConfiguredTrackingId(pixelId)) {
+    window.fbq("trackSingle", pixelId, eventName, payload);
+    return;
+  }
+
+  window.fbq("track", eventName, payload);
+}
+
 function trackEvent(eventName, payload = {}) {
   const normalizedName = {
     view_item: "view_item",
@@ -669,7 +679,7 @@ function trackEvent(eventName, payload = {}) {
 
     if (metaName) {
       const metaPayload = metaPixelPayload(payload);
-      window.fbq("track", metaName, metaPayload);
+      sendMetaPixelStandardEvent(metaName, metaPayload);
       window.fbq("trackCustom", `BCK_${normalizedName}`, metaPayload);
     } else if (/^[A-Za-z0-9_]+$/.test(normalizedName)) {
       const { ecommerce, ...customPayload } = payload;
