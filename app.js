@@ -599,6 +599,41 @@ function ecommerceCartItem(item) {
   };
 }
 
+function metaPixelPayload(payload = {}) {
+  const items = Array.isArray(payload.ecommerce?.items) ? payload.ecommerce.items : [];
+  const contents = items
+    .map((item) => {
+      const id = item.item_id || item.id || item.item_name || item.title;
+      if (!id) return null;
+
+      return {
+        id: String(id),
+        quantity: Number(item.quantity || 1),
+        item_price: Number(item.price || item.unitPrice || 0)
+      };
+    })
+    .filter(Boolean);
+  const value = Number.isFinite(Number(payload.value))
+    ? Number(payload.value)
+    : contents.reduce((total, item) => total + item.item_price * item.quantity, 0);
+  const contentName = payload.content_name
+    || items.map((item) => item.item_name || item.title).filter(Boolean).join(" + ");
+  const contentCategory = payload.content_category
+    || items.map((item) => item.item_category).filter(Boolean)[0];
+
+  return {
+    currency: config.currency || "BRL",
+    value,
+    contents,
+    content_ids: contents.map((item) => item.id),
+    content_type: payload.content_type || "product",
+    ...(contentName ? { content_name: contentName } : {}),
+    ...(contentCategory ? { content_category: contentCategory } : {}),
+    ...(payload.transaction_id ? { order_id: payload.transaction_id } : {}),
+    ...(payload.order_id ? { order_id: payload.order_id } : {})
+  };
+}
+
 function trackEvent(eventName, payload = {}) {
   const normalizedName = {
     view_item: "view_item",
@@ -633,18 +668,13 @@ function trackEvent(eventName, payload = {}) {
     }[normalizedName];
 
     if (metaName) {
-      window.fbq("track", metaName, {
-        currency: config.currency,
-        value: payload.value,
-        contents: payload.ecommerce?.items || [],
-        content_type: "product"
-      });
+      const metaPayload = metaPixelPayload(payload);
+      window.fbq("track", metaName, metaPayload);
+      window.fbq("trackCustom", `BCK_${normalizedName}`, metaPayload);
     } else if (/^[A-Za-z0-9_]+$/.test(normalizedName)) {
       const { ecommerce, ...customPayload } = payload;
       window.fbq("trackCustom", normalizedName, {
-        currency: config.currency,
-        value: payload.value,
-        contents: ecommerce?.items || [],
+        ...metaPixelPayload(payload),
         content_type: payload.content_type || "product",
         ...customPayload
       });
