@@ -5,6 +5,23 @@ window.BCK_CONFIG = {
   siteUrl: "https://beerchicken-bck.netlify.app",
   currency: "BRL",
   deliveryFee: 0,
+  marketing: {
+    orderCutoffTime: "23:30",
+    closeTime: "00:00",
+    firstOrder: {
+      enabled: true,
+      title: "Primeiro pedido pela BCK?",
+      description: "Monte o carrinho no site e envie tudo organizado para a equipe confirmar no WhatsApp."
+    },
+    proof: [
+      "Pedidos chegam com itens, endereco e pagamento organizados.",
+      "Combo montado acima de R$100 libera refri gratis automaticamente.",
+      "Bibi ajuda no primeiro contato e encaminha para a equipe responsavel."
+    ],
+    metaEvents: {
+      checkoutLead: "Lead_Checkout_WhatsApp"
+    }
+  },
   automation: {
     enabled: true,
     orderPrefix: "BCK",
@@ -59,7 +76,7 @@ window.BCK_CONFIG = {
   placeholders: {
     gtmId: "GTM-XXXXXXX",
     ga4Id: "G-XXXXXXXXXX",
-    metaPixelId: "000000000000000"
+    metaPixelId: "746956188164996"
   },
   messages: {
     defaultWhatsapp: "Oi, BCK! Vim pelo site de promocoes e quero fazer um pedido."

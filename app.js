@@ -21,6 +21,43 @@ const moneyFormatter = new Intl.NumberFormat("pt-BR", {
   currency: config.currency || "BRL"
 });
 
+function configuredMetaPixelId() {
+  return String(config.placeholders?.metaPixelId || config.metaPixelId || "").trim();
+}
+
+function isConfiguredTrackingId(id) {
+  return Boolean(id)
+    && !id.includes("XXXX")
+    && !/^0+$/.test(id);
+}
+
+function installMetaPixel() {
+  const pixelId = configuredMetaPixelId();
+  if (!isConfiguredTrackingId(pixelId) || typeof window.fbq === "function") return;
+
+  window.fbq = function fbq() {
+    if (window.fbq.callMethod) {
+      window.fbq.callMethod.apply(window.fbq, arguments);
+      return;
+    }
+
+    window.fbq.queue.push(arguments);
+  };
+  window._fbq = window.fbq;
+  window.fbq.push = window.fbq;
+  window.fbq.loaded = true;
+  window.fbq.version = "2.0";
+  window.fbq.queue = [];
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = "https://connect.facebook.net/pt_BR/fbevents.js";
+  document.head.appendChild(script);
+
+  window.fbq("init", pixelId);
+  window.fbq("track", "PageView");
+}
+
 function normalizeCatalog(rawCatalog = {}) {
   const groupCategoryMap = {
     combos: "combos",
@@ -113,6 +150,7 @@ const els = {
   featuredDeal: document.querySelector("[data-featured-deal]"),
   tickerTrack: document.querySelector("[data-ticker-track]"),
   todayLabel: document.querySelector("[data-today-label]"),
+  countdownLabel: document.querySelector("[data-countdown-label]"),
   countdown: document.querySelector("[data-countdown]"),
   categoryRail: document.querySelector("[data-category-rail]"),
   productGrid: document.querySelector("[data-product-grid]"),
@@ -600,6 +638,15 @@ function trackEvent(eventName, payload = {}) {
         value: payload.value,
         contents: payload.ecommerce?.items || [],
         content_type: "product"
+      });
+    } else if (/^[A-Za-z0-9_]+$/.test(normalizedName)) {
+      const { ecommerce, ...customPayload } = payload;
+      window.fbq("trackCustom", normalizedName, {
+        currency: config.currency,
+        value: payload.value,
+        contents: ecommerce?.items || [],
+        content_type: payload.content_type || "product",
+        ...customPayload
       });
     }
   }
@@ -1151,6 +1198,22 @@ function submitOrder(event) {
     payment_type: order.payment
   });
 
+  trackEvent(config.marketing?.metaEvents?.checkoutLead || "Lead_Checkout_WhatsApp", {
+    value: order.totals.total,
+    payment_type: order.payment,
+    order_id: order.id,
+    content_name: "Checkout WhatsApp BCK",
+    content_type: "checkout",
+    ecommerce: {
+      items: order.items.map((item) => ({
+        item_id: item.id,
+        item_name: item.title,
+        price: item.unitPrice,
+        quantity: item.quantity
+      }))
+    }
+  });
+
   window.BCK_LAST_ORDER = order;
   saveLastOrder(order);
   submitOrderToApiWithTimeout(order).then((result) => {
@@ -1263,11 +1326,26 @@ function updateTodayLabel() {
 function updateCountdown() {
   const now = new Date();
   const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
+  const cutoff = config.marketing?.orderCutoffTime || "23:30";
+  const cutoffLabel = cutoff.replace(":", "h");
+  const [cutoffHour, cutoffMinute] = cutoff.split(":").map((part) => Number(part));
+  const hour = Number.isFinite(cutoffHour) ? cutoffHour : 23;
+  const minute = Number.isFinite(cutoffMinute) ? cutoffMinute : 30;
+
+  end.setHours(hour, minute, 0, 0);
+  if (end <= now) {
+    end.setDate(end.getDate() + 1);
+  }
+
   const ms = Math.max(0, end - now);
   const hours = String(Math.floor(ms / 3600000)).padStart(2, "0");
   const minutes = String(Math.floor((ms % 3600000) / 60000)).padStart(2, "0");
   const seconds = String(Math.floor((ms % 60000) / 1000)).padStart(2, "0");
+  if (els.countdownLabel) {
+    els.countdownLabel.textContent = end.getDate() === now.getDate()
+      ? `Peça até ${cutoffLabel}`
+      : "Próxima rodada em";
+  }
   els.countdown.textContent = `${hours}:${minutes}:${seconds}`;
 }
 
@@ -1418,6 +1496,7 @@ function exposeIntegrationHooks() {
 }
 
 async function init() {
+  installMetaPixel();
   await loadCatalogData();
   ensureComboBuilderSelection();
   updateTodayLabel();
