@@ -129,6 +129,35 @@
           </form>
         </section>
 
+        <section class="settings-panel" aria-labelledby="scheduleRulesTitle">
+          <div class="settings-head">
+            <div>
+              <p class="eyebrow">Funcionamento</p>
+              <h2 id="scheduleRulesTitle">Dias e horarios para receber pedidos.</h2>
+            </div>
+            <button class="btn secondary" type="button" id="applyScheduleSettingsButton">Aplicar agenda</button>
+          </div>
+
+          <form class="settings-grid" id="scheduleSettingsForm">
+            <label class="switch">
+              <input id="scheduleEnabled" type="checkbox">
+              <span>Controlar aberto e fechado no site</span>
+            </label>
+
+            <label class="switch">
+              <input id="scheduleBlockCheckout" type="checkbox">
+              <span>Bloquear envio quando estiver fechado</span>
+            </label>
+
+            <label class="span-2">
+              Mensagem quando fechado
+              <input id="scheduleClosedMessage" type="text" placeholder="Mensagem que aparece no checkout fechado">
+            </label>
+
+            <div class="schedule-days span-2" id="scheduleDays" aria-label="Agenda semanal"></div>
+          </form>
+        </section>
+
         <section class="tool-row">
           <label class="search-box">
             <span>Buscar</span>

@@ -265,6 +265,12 @@ img {
   color: #d9ffe7;
 }
 
+.offer-strip span.is-closed {
+  border-color: rgba(225, 25, 35, 0.42);
+  background: rgba(225, 25, 35, 0.16);
+  color: #ffd3d6;
+}
+
 .brand-lockup {
   display: inline-grid;
   gap: 2px;
@@ -1075,6 +1081,17 @@ textarea {
   width: 18px;
   min-height: 18px;
   accent-color: var(--green);
+}
+
+.checkout-status {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(225, 25, 35, 0.34);
+  border-radius: var(--radius);
+  background: rgba(225, 25, 35, 0.13);
+  color: #ffd3d6;
+  font-weight: 800;
+  line-height: 1.35;
 }
 
 .cart-drawer {

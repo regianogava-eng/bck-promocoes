@@ -5,6 +5,16 @@ const COMBO_BUILDER_FALLBACK_GROUPS = [
   { key: "batata", label: "Batata", source: "batatas", required: true },
   { key: "bebida", label: "Bebida", source: "bebidas", required: true }
 ];
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const DEFAULT_SCHEDULE_DAYS = [
+  { key: "sun", label: "Domingo", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "mon", label: "Segunda", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "tue", label: "Terca", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "wed", label: "Quarta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "thu", label: "Quinta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "fri", label: "Sexta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "sat", label: "Sabado", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
+];
 const CATALOG_API_URL = "/.netlify/functions/get-catalog";
 
 let catalog = normalizeCatalog(window.BCK_CATALOG || { categories: [], products: [] });
@@ -101,6 +111,7 @@ function normalizeCatalog(rawCatalog = {}) {
     categories: Array.isArray(rawCatalog.categories) ? rawCatalog.categories : [],
     comboBuilder: normalizeComboBuilder(rawCatalog.comboBuilder),
     loyalty: normalizeLoyalty(rawCatalog.loyalty),
+    schedule: normalizeSchedule(rawCatalog.schedule),
     products: flatProducts.length ? flatProducts : groupedProducts
   };
 }
@@ -146,10 +157,46 @@ function normalizeLoyalty(loyalty = {}) {
   };
 }
 
+function normalizeSchedule(settings = {}) {
+  const days = Array.isArray(settings.days) ? settings.days : [];
+  const daysByKey = new Map(days.map((day) => [day.key, day]));
+
+  return {
+    enabled: settings.enabled !== false,
+    timezone: settings.timezone || "America/Sao_Paulo",
+    openLabel: settings.openLabel || "Aberto agora",
+    closedLabel: settings.closedLabel || "Fechado agora",
+    blockCheckoutWhenClosed: settings.blockCheckoutWhenClosed !== false,
+    closedCheckoutMessage: settings.closedCheckoutMessage
+      || "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+    days: DEFAULT_SCHEDULE_DAYS.map((fallback) => normalizeScheduleDay(daysByKey.get(fallback.key), fallback))
+  };
+}
+
+function normalizeScheduleDay(day = {}, fallback = DEFAULT_SCHEDULE_DAYS[0]) {
+  return {
+    key: fallback.key,
+    label: day.label || fallback.label,
+    open: day.open !== false,
+    openTime: normalizeClockTime(day.openTime, fallback.openTime),
+    closeTime: normalizeClockTime(day.closeTime, fallback.closeTime),
+    cutoffTime: normalizeClockTime(day.cutoffTime, fallback.cutoffTime)
+  };
+}
+
+function normalizeClockTime(value, fallback) {
+  const time = String(value || "").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : fallback;
+}
+
 const els = {
   featuredDeal: document.querySelector("[data-featured-deal]"),
   tickerTrack: document.querySelector("[data-ticker-track]"),
   todayLabel: document.querySelector("[data-today-label]"),
+  openStatus: document.querySelector("[data-open-status]"),
+  hoursTitle: document.querySelector("[data-hours-title]"),
+  hoursValue: document.querySelector("[data-hours-value]"),
+  hoursNote: document.querySelector("[data-hours-note]"),
   countdownLabel: document.querySelector("[data-countdown-label]"),
   countdown: document.querySelector("[data-countdown]"),
   categoryRail: document.querySelector("[data-category-rail]"),
@@ -171,6 +218,8 @@ const els = {
   orderConfirmation: document.querySelector("[data-order-confirmation]"),
   orderConfirmationId: document.querySelector("[data-order-confirmation-id]"),
   checkoutForm: document.querySelector("[data-checkout-form]"),
+  checkoutStatus: document.querySelector("[data-checkout-status]"),
+  checkoutSubmit: document.querySelector("[data-checkout-submit]"),
   aiAssistantCard: document.querySelector("[data-ai-assistant-card]"),
   aiAssistantLabels: document.querySelectorAll("[data-ai-assistant-label]"),
   aiAssistantShort: document.querySelector("[data-ai-assistant-short]"),
@@ -1211,6 +1260,18 @@ function submitOrder(event) {
     return;
   }
 
+  const scheduleStatus = getScheduleStatus();
+  if (scheduleStatus.schedule.blockCheckoutWhenClosed && !scheduleStatus.acceptingOrders) {
+    renderScheduleStatus();
+    if (els.checkoutStatus) {
+      els.checkoutStatus.hidden = false;
+      els.checkoutStatus.textContent = scheduleStatus.next?.text
+        ? `${scheduleStatus.schedule.closedCheckoutMessage} ${scheduleStatus.next.text}.`
+        : scheduleStatus.schedule.closedCheckoutMessage;
+    }
+    return;
+  }
+
   const formData = new FormData(els.checkoutForm);
   const order = buildOrderPayload(formData);
   const checkoutWindow = window.open("about:blank", "_blank");
@@ -1354,6 +1415,169 @@ function loadCart() {
   }
 }
 
+function storeSchedule() {
+  return catalog.schedule || normalizeSchedule();
+}
+
+function timeToMinutes(value, fallback = "00:00") {
+  const time = normalizeClockTime(value, fallback);
+  const [hour, minute] = time.split(":").map((part) => Number(part));
+  return (hour * 60) + minute;
+}
+
+function formatTimeLabel(value) {
+  return normalizeClockTime(value, "00:00").replace(":00", "h").replace(":", "h");
+}
+
+function formatScheduleWindow(day) {
+  if (!day || day.open === false) return "Fechado";
+  return `${formatTimeLabel(day.openTime)} as ${formatTimeLabel(day.closeTime)}`;
+}
+
+function zonedNowParts(date = new Date(), timeZone = "America/Sao_Paulo") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  const weekday = String(parts.weekday || "sun").toLowerCase().slice(0, 3);
+  const keyMap = { sun: "sun", mon: "mon", tue: "tue", wed: "wed", thu: "thu", fri: "fri", sat: "sat" };
+  const dayKey = keyMap[weekday] || "sun";
+
+  return {
+    dayKey,
+    dayIndex: WEEKDAY_KEYS.indexOf(dayKey),
+    minutes: (Number(parts.hour || 0) * 60) + Number(parts.minute || 0)
+  };
+}
+
+function dayWindow(day, endField = "closeTime") {
+  if (!day || day.open === false) return null;
+
+  const start = timeToMinutes(day.openTime, "17:00");
+  let end = timeToMinutes(day[endField] || day.closeTime, day.closeTime || "00:00");
+  if (end <= start) end += 1440;
+
+  return { start, end };
+}
+
+function isWithinDayWindow(day, minutes, endField) {
+  const window = dayWindow(day, endField);
+  return Boolean(window && minutes >= window.start && minutes < window.end);
+}
+
+function findScheduleDay(schedule, key) {
+  return schedule.days.find((day) => day.key === key);
+}
+
+function findNextAcceptingTime(schedule, dayIndex, minutes) {
+  for (let offset = 0; offset < 8; offset += 1) {
+    const nextIndex = (dayIndex + offset) % WEEKDAY_KEYS.length;
+    const day = findScheduleDay(schedule, WEEKDAY_KEYS[nextIndex]);
+    if (!day || day.open === false) continue;
+
+    const window = dayWindow(day, "cutoffTime");
+    if (!window) continue;
+
+    if (offset === 0 && window.start <= minutes) continue;
+
+    return {
+      day,
+      offset,
+      text: offset === 0
+        ? `Abre hoje as ${formatTimeLabel(day.openTime)}`
+        : offset === 1
+          ? `Abre amanha as ${formatTimeLabel(day.openTime)}`
+          : `Abre ${day.label} as ${formatTimeLabel(day.openTime)}`
+    };
+  }
+
+  return null;
+}
+
+function getScheduleStatus(date = new Date()) {
+  const schedule = storeSchedule();
+  if (!schedule.enabled) {
+    return { open: true, acceptingOrders: true, schedule, today: null, activeDay: null, next: null };
+  }
+
+  const now = zonedNowParts(date, schedule.timezone);
+  const today = findScheduleDay(schedule, WEEKDAY_KEYS[now.dayIndex]) || schedule.days[0];
+  const previousIndex = (now.dayIndex + WEEKDAY_KEYS.length - 1) % WEEKDAY_KEYS.length;
+  const previous = findScheduleDay(schedule, WEEKDAY_KEYS[previousIndex]);
+  const todayOpen = isWithinDayWindow(today, now.minutes, "closeTime");
+  const previousOpen = isWithinDayWindow(previous, now.minutes + 1440, "closeTime");
+  const activeDay = todayOpen ? today : previousOpen ? previous : today;
+  const open = todayOpen || previousOpen;
+  const compareMinutes = previousOpen && !todayOpen ? now.minutes + 1440 : now.minutes;
+  const acceptingOrders = open && isWithinDayWindow(activeDay, compareMinutes, "cutoffTime");
+  const next = acceptingOrders ? null : findNextAcceptingTime(schedule, now.dayIndex, now.minutes);
+
+  return {
+    open,
+    acceptingOrders,
+    schedule,
+    today,
+    activeDay,
+    next,
+    reason: open ? "orders_closed" : "store_closed"
+  };
+}
+
+function renderScheduleStatus() {
+  const status = getScheduleStatus();
+  const schedule = status.schedule;
+  const today = status.today || status.activeDay;
+  const shouldBlock = schedule.blockCheckoutWhenClosed && !status.acceptingOrders;
+
+  if (els.openStatus) {
+    els.openStatus.textContent = status.acceptingOrders
+      ? schedule.openLabel
+      : status.open
+        ? "Pedidos encerrados"
+        : schedule.closedLabel;
+    els.openStatus.classList.toggle("is-closed", !status.acceptingOrders);
+  }
+
+  if (els.hoursTitle) {
+    els.hoursTitle.textContent = today ? `Horario de ${today.label}` : "Horario do delivery";
+  }
+
+  if (els.hoursValue) {
+    els.hoursValue.textContent = today ? formatScheduleWindow(today) : "17h as 00h";
+  }
+
+  if (els.hoursNote) {
+    if (status.acceptingOrders && status.activeDay) {
+      els.hoursNote.textContent = `Pedidos pelo site ate ${formatTimeLabel(status.activeDay.cutoffTime)}. A equipe confirma pelo WhatsApp.`;
+    } else {
+      els.hoursNote.textContent = status.next?.text
+        ? `${status.next.text}. Voce ainda pode montar o carrinho.`
+        : "Voce ainda pode montar o carrinho, mas o envio do pedido esta fechado.";
+    }
+  }
+
+  if (els.checkoutStatus) {
+    els.checkoutStatus.hidden = !shouldBlock;
+    if (shouldBlock) {
+      els.checkoutStatus.textContent = status.next?.text
+        ? `${schedule.closedCheckoutMessage} ${status.next.text}.`
+        : schedule.closedCheckoutMessage;
+    }
+  }
+
+  if (els.checkoutSubmit) {
+    els.checkoutSubmit.disabled = shouldBlock;
+    els.checkoutSubmit.textContent = shouldBlock ? "Pedido fechado agora" : "Enviar pedido completo";
+  }
+}
+
 function updateTodayLabel() {
   const label = new Intl.DateTimeFormat("pt-BR", {
     weekday: "short",
@@ -1364,9 +1588,20 @@ function updateTodayLabel() {
 }
 
 function updateCountdown() {
+  renderScheduleStatus();
+
+  const status = getScheduleStatus();
+  if (status.schedule.enabled && !status.acceptingOrders) {
+    if (els.countdownLabel) {
+      els.countdownLabel.textContent = status.next?.text || "Horario fechado";
+    }
+    els.countdown.textContent = "--:--:--";
+    return;
+  }
+
   const now = new Date();
   const end = new Date(now);
-  const cutoff = config.marketing?.orderCutoffTime || "23:30";
+  const cutoff = status.activeDay?.cutoffTime || config.marketing?.orderCutoffTime || "23:30";
   const cutoffLabel = cutoff.replace(":", "h");
   const [cutoffHour, cutoffMinute] = cutoff.split(":").map((part) => Number(part));
   const hour = Number.isFinite(cutoffHour) ? cutoffHour : 23;
@@ -1531,6 +1766,7 @@ function exposeIntegrationHooks() {
     buildAssistantMessage,
     openAiAssistant,
     submitOrderToApi,
+    getScheduleStatus,
     trackEvent
   };
 }
@@ -1548,6 +1784,7 @@ async function init() {
   renderCombos();
   renderCart();
   renderAiAssistant();
+  renderScheduleStatus();
   bindEvents();
   exposeIntegrationHooks();
   updateCountdown();

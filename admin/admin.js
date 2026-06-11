@@ -13,6 +13,15 @@
     { key: "batata", label: "Batata", source: "batatas", required: true, itemIds: ["batata-cheddar-bacon"] },
     { key: "bebida", label: "Bebida", source: "bebidas", required: true, itemIds: ["refri-gelado"] }
   ];
+  var DEFAULT_SCHEDULE_DAYS = [
+    { key: "sun", label: "Domingo", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "mon", label: "Segunda", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "tue", label: "Terca", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "wed", label: "Quarta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "thu", label: "Quinta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "fri", label: "Sexta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "sat", label: "Sabado", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
+  ];
 
   var state = {
     catalog: null,
@@ -64,6 +73,12 @@
     elements.loyaltyEnabled = document.getElementById("loyaltyEnabled");
     elements.loyaltyPurchaseTarget = document.getElementById("loyaltyPurchaseTarget");
     elements.loyaltyRewardTitle = document.getElementById("loyaltyRewardTitle");
+    elements.scheduleSettingsForm = document.getElementById("scheduleSettingsForm");
+    elements.applyScheduleSettingsButton = document.getElementById("applyScheduleSettingsButton");
+    elements.scheduleEnabled = document.getElementById("scheduleEnabled");
+    elements.scheduleBlockCheckout = document.getElementById("scheduleBlockCheckout");
+    elements.scheduleClosedMessage = document.getElementById("scheduleClosedMessage");
+    elements.scheduleDays = document.getElementById("scheduleDays");
     elements.dialog = document.getElementById("productDialog");
     elements.form = document.getElementById("productForm");
     elements.editorTitle = document.getElementById("editorTitle");
@@ -114,6 +129,11 @@
     elements.comboSettingsForm.addEventListener("submit", function (event) {
       event.preventDefault();
       applyComboSettings();
+    });
+    elements.applyScheduleSettingsButton.addEventListener("click", applyScheduleSettings);
+    elements.scheduleSettingsForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      applyScheduleSettings();
     });
 
     elements.newProductButton.addEventListener("click", function () {
@@ -250,6 +270,7 @@
     catalog.products = Array.isArray(catalog.products) ? catalog.products : [];
     catalog.comboBuilder = normalizeComboBuilder(catalog.comboBuilder);
     catalog.loyalty = normalizeLoyalty(catalog.loyalty);
+    catalog.schedule = normalizeSchedule(catalog.schedule);
 
     if (!catalog.categories.some(function (category) { return category.id === "todos"; })) {
       catalog.categories.unshift({ id: "todos", label: "Todos", description: "Todas as ofertas" });
@@ -325,11 +346,52 @@
     };
   }
 
+  function normalizeSchedule(schedule) {
+    schedule = schedule || {};
+    var days = Array.isArray(schedule.days) ? schedule.days : [];
+    var byKey = {};
+    days.forEach(function (day) {
+      if (day && day.key) {
+        byKey[day.key] = day;
+      }
+    });
+
+    return {
+      enabled: schedule.enabled !== false,
+      timezone: schedule.timezone || "America/Sao_Paulo",
+      openLabel: schedule.openLabel || "Aberto agora",
+      closedLabel: schedule.closedLabel || "Fechado agora",
+      blockCheckoutWhenClosed: schedule.blockCheckoutWhenClosed !== false,
+      closedCheckoutMessage: schedule.closedCheckoutMessage || "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+      days: DEFAULT_SCHEDULE_DAYS.map(function (fallback) {
+        return normalizeScheduleDay(byKey[fallback.key], fallback);
+      })
+    };
+  }
+
+  function normalizeScheduleDay(day, fallback) {
+    day = day || {};
+    return {
+      key: fallback.key,
+      label: day.label || fallback.label,
+      open: day.open !== false,
+      openTime: normalizeClockTime(day.openTime, fallback.openTime),
+      closeTime: normalizeClockTime(day.closeTime, fallback.closeTime),
+      cutoffTime: normalizeClockTime(day.cutoffTime, fallback.cutoffTime)
+    };
+  }
+
+  function normalizeClockTime(value, fallback) {
+    var time = String(value || "").trim();
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(time) ? time : fallback;
+  }
+
   function renderAll() {
     renderCategories();
     renderProducts();
     renderMetrics();
     renderComboSettings();
+    renderScheduleSettings();
   }
 
   function renderCategories() {
@@ -380,6 +442,27 @@
     elements.loyaltyEnabled.checked = Boolean(loyalty.enabled);
     elements.loyaltyPurchaseTarget.value = loyalty.purchaseTarget || 8;
     elements.loyaltyRewardTitle.value = loyalty.rewardTitle || "";
+  }
+
+  function renderScheduleSettings() {
+    var schedule = state.catalog.schedule || normalizeSchedule();
+
+    elements.scheduleEnabled.checked = schedule.enabled !== false;
+    elements.scheduleBlockCheckout.checked = schedule.blockCheckoutWhenClosed !== false;
+    elements.scheduleClosedMessage.value = schedule.closedCheckoutMessage || "";
+    elements.scheduleDays.innerHTML = schedule.days.map(function (day) {
+      return [
+        '<article class="schedule-day" data-schedule-day="' + escapeAttr(day.key) + '">',
+        '<label class="switch schedule-day-main">',
+        '<input type="checkbox" data-schedule-open ' + (day.open !== false ? "checked" : "") + '>',
+        '<span>' + escapeHtml(day.label) + '</span>',
+        '</label>',
+        '<label>Abre<input type="time" data-schedule-open-time value="' + escapeAttr(day.openTime) + '"></label>',
+        '<label>Fecha<input type="time" data-schedule-close-time value="' + escapeAttr(day.closeTime) + '"></label>',
+        '<label>Pedido ate<input type="time" data-schedule-cutoff-time value="' + escapeAttr(day.cutoffTime) + '"></label>',
+        '</article>'
+      ].join("");
+    }).join("");
   }
 
   function renderProducts() {
@@ -540,6 +623,41 @@
 
     markDirty("Regras do combo atualizadas. Agora clique em Salvar ao vivo.");
     renderComboSettings();
+  }
+
+  function applyScheduleSettings() {
+    if (!state.catalog) {
+      showNotice("Espere o catalogo carregar antes de editar a agenda.", "error");
+      return;
+    }
+
+    var current = state.catalog.schedule || normalizeSchedule();
+    var rows = Array.prototype.slice.call(elements.scheduleDays.querySelectorAll("[data-schedule-day]"));
+    var days = rows.map(function (row) {
+      var key = row.getAttribute("data-schedule-day");
+      var fallback = DEFAULT_SCHEDULE_DAYS.find(function (day) { return day.key === key; }) || DEFAULT_SCHEDULE_DAYS[0];
+      return {
+        key: key,
+        label: fallback.label,
+        open: Boolean(row.querySelector("[data-schedule-open]").checked),
+        openTime: normalizeClockTime(row.querySelector("[data-schedule-open-time]").value, fallback.openTime),
+        closeTime: normalizeClockTime(row.querySelector("[data-schedule-close-time]").value, fallback.closeTime),
+        cutoffTime: normalizeClockTime(row.querySelector("[data-schedule-cutoff-time]").value, fallback.cutoffTime)
+      };
+    });
+
+    state.catalog.schedule = normalizeSchedule({
+      enabled: elements.scheduleEnabled.checked,
+      timezone: current.timezone || "America/Sao_Paulo",
+      openLabel: current.openLabel || "Aberto agora",
+      closedLabel: current.closedLabel || "Fechado agora",
+      blockCheckoutWhenClosed: elements.scheduleBlockCheckout.checked,
+      closedCheckoutMessage: elements.scheduleClosedMessage.value.trim() || current.closedCheckoutMessage,
+      days: days
+    });
+
+    markDirty("Agenda de funcionamento atualizada. Agora clique em Salvar ao vivo.");
+    renderScheduleSettings();
   }
 
   function applyEditorChanges() {
@@ -854,6 +972,7 @@
     addBaseProductIds(catalog.baseProducts, productIds);
     validateComboBuilderIssues(catalog.comboBuilder, productIds, issues);
     validateLoyaltyIssues(catalog.loyalty, issues);
+    validateScheduleIssues(catalog.schedule, issues);
 
     return issues;
   }
@@ -926,12 +1045,41 @@
     }
   }
 
+  function validateScheduleIssues(schedule, issues) {
+    if (!schedule || schedule.enabled === false) {
+      return;
+    }
+
+    if (!Array.isArray(schedule.days) || schedule.days.length !== DEFAULT_SCHEDULE_DAYS.length) {
+      issues.push("A agenda precisa ter os 7 dias da semana.");
+      return;
+    }
+
+    schedule.days.forEach(function (day) {
+      if (!day || !day.key) {
+        issues.push("Um dia da agenda esta invalido.");
+        return;
+      }
+
+      if (day.open !== false) {
+        if (!isClockTime(day.openTime) || !isClockTime(day.closeTime) || !isClockTime(day.cutoffTime)) {
+          issues.push("Confira os horarios da agenda em " + (day.label || day.key) + ".");
+        }
+      }
+    });
+  }
+
+  function isClockTime(value) {
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value || ""));
+  }
+
   function cleanForSave(catalog) {
     return {
       categories: catalog.categories || [],
       products: (catalog.products || []).map(cleanProductForSave),
       comboBuilder: cleanComboBuilderForSave(catalog.comboBuilder),
       loyalty: cleanLoyaltyForSave(catalog.loyalty),
+      schedule: cleanScheduleForSave(catalog.schedule),
       baseProducts: catalog.baseProducts || {},
       promotionGroups: catalog.promotionGroups || {}
     };
@@ -957,6 +1105,19 @@
       rewardTitle: normalized.rewardTitle,
       orderIdField: normalized.orderIdField,
       historySource: normalized.historySource
+    };
+  }
+
+  function cleanScheduleForSave(schedule) {
+    var normalized = normalizeSchedule(schedule);
+    return {
+      enabled: normalized.enabled !== false,
+      timezone: normalized.timezone,
+      openLabel: normalized.openLabel,
+      closedLabel: normalized.closedLabel,
+      blockCheckoutWhenClosed: normalized.blockCheckoutWhenClosed !== false,
+      closedCheckoutMessage: normalized.closedCheckoutMessage,
+      days: normalized.days
     };
   }
 

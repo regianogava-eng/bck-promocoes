@@ -59,7 +59,7 @@
         <div class="hero-store__content">
           <div class="hero-copy">
             <div class="offer-strip">
-              <span>Aberto agora</span>
+              <span data-open-status>Aberto agora</span>
               <span>Delivery em Cachoeiro</span>
               <span data-today-label>Promoções de hoje</span>
             </div>
@@ -104,9 +104,9 @@
 
       <section class="conversion-strip" aria-label="Informações rápidas para pedir">
         <article>
-          <span>Horário do delivery</span>
-          <strong>17h às 00h</strong>
-          <p>Peça pelo site até 23h30 e receba a confirmação pelo WhatsApp.</p>
+          <span data-hours-title>Horário do delivery</span>
+          <strong data-hours-value>17h às 00h</strong>
+          <p data-hours-note>Peça pelo site até 23h30 e receba a confirmação pelo WhatsApp.</p>
         </article>
         <article>
           <span>Pedido organizado</span>
@@ -260,7 +260,8 @@
                 Dinheiro
               </label>
             </fieldset>
-            <button class="btn btn--whatsapp btn--large form-field--full" type="submit">
+            <p class="checkout-status form-field--full" data-checkout-status hidden></p>
+            <button class="btn btn--whatsapp btn--large form-field--full" type="submit" data-checkout-submit>
               Enviar pedido completo
             </button>
           </form>

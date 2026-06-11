@@ -331,6 +331,35 @@ button {
   display: flex;
 }
 
+.schedule-days {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.schedule-day {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1.2fr) repeat(3, minmax(7rem, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.schedule-day-main {
+  min-height: 2.75rem;
+  align-items: center;
+}
+
+.schedule-day label:not(.switch) {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .tool-row {
   justify-content: space-between;
   margin: 1rem 0;
@@ -717,6 +746,10 @@ legend {
     grid-template-columns: 1fr;
   }
 
+  .schedule-day {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .editor-body {
     grid-template-columns: 1fr;
   }
@@ -736,6 +769,7 @@ legend {
   .form-grid,
   .settings-grid,
   .settings-grid.compact,
+  .schedule-day,
   .top-actions {
     grid-template-columns: 1fr;
   }

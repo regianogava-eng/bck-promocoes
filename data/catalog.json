@@ -49,6 +49,72 @@
       "description": "Pronto para ativar"
     }
   ],
+  "schedule": {
+    "enabled": true,
+    "timezone": "America/Sao_Paulo",
+    "openLabel": "Aberto agora",
+    "closedLabel": "Fechado agora",
+    "blockCheckoutWhenClosed": true,
+    "closedCheckoutMessage": "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+    "days": [
+      {
+        "key": "sun",
+        "label": "Domingo",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "mon",
+        "label": "Segunda",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "tue",
+        "label": "Terca",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "wed",
+        "label": "Quarta",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "thu",
+        "label": "Quinta",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "fri",
+        "label": "Sexta",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      },
+      {
+        "key": "sat",
+        "label": "Sabado",
+        "open": true,
+        "openTime": "17:00",
+        "closeTime": "00:00",
+        "cutoffTime": "23:30"
+      }
+    ]
+  },
   "products": [
     {
       "id": "combo-frango-pizza",
