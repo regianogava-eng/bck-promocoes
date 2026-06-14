@@ -106,7 +106,7 @@ Para registrar com o PIN recebido, depois de conferir o ID correto:
 ```powershell
 $env:WHATSAPP_ACCESS_TOKEN="cole_o_token_temporario_aqui"
 $env:WHATSAPP_WABA_ID="2235684346968129"
-$env:WHATSAPP_REGISTER_PIN="771912"
+$env:WHATSAPP_REGISTER_PIN="cole_o_pin_de_6_digitos_aqui"
 py tools\register_whatsapp_phone.py
 Remove-Item Env:\WHATSAPP_ACCESS_TOKEN
 Remove-Item Env:\WHATSAPP_WABA_ID
