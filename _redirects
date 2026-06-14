@@ -1,0 +1,6 @@
+/README.md /404.html 404!
+/SUPORTE_WHATSAPP_META.md /404.html 404!
+/tools/* /404.html 404!
+/*.py /404.html 404!
+/.netlify/* /404.html 404!
+/NETLIFY_DEPLOY_LIMPO* /404.html 404!
