@@ -1,0 +1,6 @@
+README.md
+SUPORTE_WHATSAPP_META.md
+tools/
+*.py
+__pycache__/
+.netlify/
