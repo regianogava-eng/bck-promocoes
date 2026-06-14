@@ -54,7 +54,8 @@ Configure estes segredos no Netlify, em Site configuration > Environment variabl
 
 ```text
 WHATSAPP_ACCESS_TOKEN=token_permanente_da_meta
-WHATSAPP_PHONE_NUMBER_ID=1153856107808696
+WHATSAPP_WABA_ID=2235684346968129
+WHATSAPP_PHONE_NUMBER_ID=phone_number_id_do_numero_correto
 WHATSAPP_API_VERSION=v25.0
 WHATSAPP_VERIFY_TOKEN=crie_um_codigo_secreto_e_repita_na_meta
 BCK_STORE_NOTIFY_NUMBER=5528999329677
@@ -75,6 +76,42 @@ https://beerchicken-bck.netlify.app/.netlify/functions/whatsapp-webhook
 O verify token deve ser exatamente o mesmo valor de `WHATSAPP_VERIFY_TOKEN`.
 
 Depois de verificar o webhook, assine o evento `messages`.
+
+Importante: `WHATSAPP_PHONE_NUMBER_ID` nao e o WABA ID. Ele precisa ser o ID do telefone dentro da WABA. Para o numero novo `+55 28 99984-9520`, confirme o ID com o diagnostico abaixo antes de chamar `/register`.
+
+O link do WhatsApp Manager informado usa este asset/WABA:
+
+```text
+WHATSAPP_WABA_ID=2235684346968129
+```
+
+### Diagnostico de WABA / numero pendente
+
+Se o `/register` informar que a WABA nao esta verificada mesmo com o Business Manager mostrando o negocio verificado, use o diagnostico local antes de acionar a Meta:
+
+```powershell
+$env:WHATSAPP_ACCESS_TOKEN="cole_o_token_temporario_aqui"
+$env:WHATSAPP_WABA_ID="2235684346968129"
+py tools\check_meta_whatsapp.py
+Remove-Item Env:\WHATSAPP_ACCESS_TOKEN
+Remove-Item Env:\WHATSAPP_WABA_ID
+```
+
+O script verifica app, permissoes, negocio, WABA e lista os telefones disponiveis. Ele mascara o token e nao salva segredo em arquivo.
+
+O texto pronto para suporte esta em `SUPORTE_WHATSAPP_META.md`.
+
+Para registrar com o PIN recebido, depois de conferir o ID correto:
+
+```powershell
+$env:WHATSAPP_ACCESS_TOKEN="cole_o_token_temporario_aqui"
+$env:WHATSAPP_WABA_ID="2235684346968129"
+$env:WHATSAPP_REGISTER_PIN="771912"
+py tools\register_whatsapp_phone.py
+Remove-Item Env:\WHATSAPP_ACCESS_TOKEN
+Remove-Item Env:\WHATSAPP_WABA_ID
+Remove-Item Env:\WHATSAPP_REGISTER_PIN
+```
 
 ## Bibi, atendente virtual
 
