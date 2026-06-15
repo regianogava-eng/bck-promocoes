@@ -60,7 +60,7 @@ window.BCK_CONFIG = {
       headline: "Fale com a Bibi",
       description: "A atendente virtual da BCK ajuda a escolher combo, tirar duvida de entrega e continuar seu atendimento.",
       whatsappNumber: "5528999849520",
-      whatsappMessage: "Oi, Bibi! Vim pelo mini site e quero ajuda para escolher meu pedido.",
+      whatsappMessage: "Oi, Bibi! Vim pelo mini site e quero atendimento.",
       handoffKeyword: "BIBI",
       provider: "whatsapp-cloud-api"
     },
