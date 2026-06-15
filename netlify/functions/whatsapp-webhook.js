@@ -99,6 +99,11 @@ exports.handler = async function handler(event) {
           customer: maskPhone(message.from),
           error: storeNotification.error
         }));
+      } else {
+        console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
+          customer: maskPhone(message.from),
+          chars: (manualOrderText || rawText).length
+        }));
       }
       await saveHumanHandoff(message.from, message.id);
       await deleteOrderDraft(message.from);
