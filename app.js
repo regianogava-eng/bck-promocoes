@@ -475,8 +475,8 @@ function cartTotal() {
   return cartSubtotal() + (config.deliveryFee || 0);
 }
 
-function buildWhatsappUrl(message) {
-  return `https://wa.me/${config.whatsappNumber}?text=${encodeURIComponent(message)}`;
+function buildWhatsappUrl(message, phoneNumber = config.whatsappNumber) {
+  return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
 }
 
 function automationSettings() {
@@ -497,7 +497,8 @@ function buildAssistantMessage() {
 }
 
 function buildAssistantUrl() {
-  return buildWhatsappUrl(buildAssistantMessage());
+  const assistant = aiAssistantSettings();
+  return buildWhatsappUrl(buildAssistantMessage(), assistant.whatsappNumber || config.whatsappNumber);
 }
 
 function renderAiAssistant() {
