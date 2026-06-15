@@ -47,6 +47,7 @@ exports.handler = async function handler(event) {
     const normalizedText = normalize(message.text || "");
     const rawText = String(message.text || "").trim();
     let isNewManualOrder = isManualOrder(normalizedText);
+    let manualOrderText = isNewManualOrder ? rawText : "";
     let replyText = "";
     const orderDraft = isNewManualOrder ? null : await getOrderDraft(message.from);
 
@@ -60,7 +61,8 @@ exports.handler = async function handler(event) {
     }
 
     if (orderDraft && isDraftCompletion(normalizedText)) {
-      replyText = manualOrderReceivedReply([orderDraft.text, rawText].filter(Boolean).join("\n"));
+      manualOrderText = [orderDraft.text, rawText].filter(Boolean).join("\n");
+      replyText = manualOrderReceivedReply(manualOrderText);
       isNewManualOrder = true;
     } else {
       replyText = buildAutoReply(message);
@@ -70,6 +72,13 @@ exports.handler = async function handler(event) {
 
     const sent = await sendTextMessage(message.from, replyText);
     if (sent.ok && isNewManualOrder) {
+      const storeNotification = await notifyStoreManualOrder(message.from, manualOrderText || rawText, message.id);
+      if (!storeNotification.ok) {
+        console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
+          customer: maskPhone(message.from),
+          error: storeNotification.error
+        }));
+      }
       await saveHumanHandoff(message.from, message.id);
       await deleteOrderDraft(message.from);
     } else if (sent.ok && isOrderDraft(normalizedText)) {
@@ -759,6 +768,32 @@ async function sendTextMessage(to, body) {
   }
 
   return { ok: true };
+}
+
+async function notifyStoreManualOrder(customerPhone, orderText, messageId) {
+  const to = onlyDigits(process.env.BCK_STORE_NOTIFY_NUMBER || "");
+  if (!to) {
+    return { ok: false, error: "store_notify_number_missing" };
+  }
+
+  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText, messageId));
+}
+
+function formatManualOrderNotification(customerPhone, orderText, messageId) {
+  const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+  return [
+    "NOVO PEDIDO VIA BIBI",
+    "",
+    `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
+    messageId ? `Mensagem ID: ${messageId}` : "",
+    `Recebido: ${receivedAt}`,
+    "",
+    "Pedido enviado pelo cliente:",
+    formatCustomerOrder(orderText),
+    "",
+    "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar."
+  ].filter(Boolean).join("\n");
 }
 
 async function isHumanHandoffActive(phone) {
