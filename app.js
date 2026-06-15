@@ -1632,6 +1632,17 @@ function duplicateTicker() {
 
 function bindEvents() {
   document.addEventListener("click", (event) => {
+    const tracked = event.target.closest("[data-track-click]");
+    if (tracked) {
+      const label = tracked.dataset.trackClick;
+      trackEvent("click", {
+        label,
+        click_label: label,
+        click_text: tracked.textContent.replace(/\s+/g, " ").trim().slice(0, 120),
+        click_url: tracked.href || ""
+      });
+    }
+
     const categoryButton = event.target.closest("[data-category]");
     if (categoryButton) {
       state.selectedCategory = categoryButton.dataset.category;
@@ -1713,13 +1724,6 @@ function bindEvents() {
     if (remove) {
       removeFromCart(remove.dataset.removeItem);
       return;
-    }
-
-    const tracked = event.target.closest("[data-track-click]");
-    if (tracked) {
-      trackEvent("click", {
-        label: tracked.dataset.trackClick
-      });
     }
   });
 
