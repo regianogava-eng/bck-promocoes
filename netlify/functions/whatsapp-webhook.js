@@ -14,7 +14,7 @@ const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
-const BIBI_VERSION = "2026-06-15-official-notify-v2";
+const BIBI_VERSION = "2026-06-15-official-notify-v3";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -290,7 +290,7 @@ async function handleBibiMessage(message) {
   } else if (session.state === STATES.CONFIRMING) {
     result = await handleConfirmingState({ message, session, rawText, text, siteUrl });
   } else if (session.state === STATES.FORWARDED) {
-    result = await handleForwardedState({ message, session, text, siteUrl });
+    result = await handleForwardedState({ message, session, rawText, text, siteUrl });
   } else {
     result = await handleMenuState({ message, session, rawText, text, siteUrl });
   }
@@ -547,7 +547,7 @@ async function forwardCompletedOrder(message, session, reason) {
   ].join("\n"));
 }
 
-async function handleForwardedState({ message, session, text, siteUrl }) {
+async function handleForwardedState({ message, session, rawText, text, siteUrl }) {
   if (session.expiredNotice) {
     const menu = menuSession();
     logStateChanged(message.from, session.state, menu.state, "forward_lock_expired");
@@ -558,6 +558,44 @@ async function handleForwardedState({ message, session, text, siteUrl }) {
     const menu = menuSession();
     logStateChanged(message.from, session.state, menu.state, "reset");
     return withSession(menu, mainMenu(siteUrl));
+  }
+
+  if (isChoice(text, "5") || isHumanRequest(text) || hasAny(text, ["atendimento humano", "falar com equipe", "falar com humano"])) {
+    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    if (!teamNotification.ok) {
+      console.error("BCK_BIBI_HUMAN_NOTIFY_FAILED", JSON.stringify({
+        customer: maskPhone(message.from),
+        error: teamNotification.error,
+        status: teamNotification.status || null,
+        detail: teamNotification.detail || null
+      }));
+    } else {
+      console.log("BCK_BIBI_HUMAN_NOTIFY_SENT", JSON.stringify({
+        customer: maskPhone(message.from)
+      }));
+    }
+
+    const next = forwardedSession(session.data, "human_requested_again");
+    return withSession(next, humanReply(teamNotification.ok));
+  }
+
+  if (isChoice(text, "2") || isOrderStartRequest(text)) {
+    const next = collectingSession(emptyOrderData(), "start_order_after_handoff");
+    logStateChanged(message.from, session.state, next.state, "start_order_after_handoff");
+    return withSession(next, startCollectingReply(siteUrl));
+  }
+
+  if (looksLikeOrderStart(text)) {
+    const data = mergeOrderData(emptyOrderData(), extractOrderFields(rawText));
+    const next = collectingSession(data, "order_after_handoff");
+    const completeness = orderCompleteness(next.data);
+    logStateChanged(message.from, session.state, next.state, "order_after_handoff");
+
+    if (completeness.complete) {
+      return forwardCompletedOrder(message, next, "complete_after_handoff");
+    }
+
+    return withSession(next, askMissingFieldsReply(next.data, completeness.missing));
   }
 
   return {
