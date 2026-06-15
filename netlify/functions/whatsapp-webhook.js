@@ -14,7 +14,7 @@ const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
-const BIBI_VERSION = "2026-06-15-official-notify-v3";
+const BIBI_VERSION = "2026-06-15-audited-extractor-v4";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -403,7 +403,7 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
   if (isOnlyMissingChange(pendingBefore) && shouldAnswerChange(text)) {
     next.data = {
       ...next.data,
-      changeFor: parseChangeAnswer(text) || "nao"
+      changeFor: parseChangeAnswer(text, { allowNumericOnly: true }) || "nao"
     };
     const confirming = confirmingSession(next.data, "change_answered");
     return forwardCompletedOrder(message, confirming, "change_answered");
@@ -429,7 +429,8 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
     return withSession(next, continueCollectingReply(next.data));
   }
 
-  next.data = mergeOrderData(next.data, extractOrderFields(rawText));
+  const incoming = contextualizeIncomingOrderData(extractOrderFields(rawText), next.data, rawText);
+  next.data = mergeOrderData(next.data, incoming);
   const completeness = orderCompleteness(next.data);
 
   if (completeness.complete) {
@@ -458,7 +459,7 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
 
   if (isPositiveConfirmation(text)) {
     const summary = formatOrderSummary(session.data);
-    const storeNotification = await notifyStoreManualOrder(message.from, summary, message.id);
+    const storeNotification = await notifyStoreManualOrder(message.from, summary);
     if (!storeNotification.ok) {
       console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
         customer: maskPhone(message.from),
@@ -509,7 +510,7 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
 
 async function forwardCompletedOrder(message, session, reason) {
   const summary = formatOrderSummary(session.data);
-  const storeNotification = await notifyStoreManualOrder(message.from, summary, message.id);
+  const storeNotification = await notifyStoreManualOrder(message.from, summary);
   if (!storeNotification.ok) {
     console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
       customer: maskPhone(message.from),
@@ -561,7 +562,7 @@ async function handleForwardedState({ message, session, rawText, text, siteUrl }
   }
 
   if (isChoice(text, "5") || isHumanRequest(text) || hasAny(text, ["atendimento humano", "falar com equipe", "falar com humano"])) {
-    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    const teamNotification = await notifyStoreHumanRequest(message.from);
     if (!teamNotification.ok) {
       console.error("BCK_BIBI_HUMAN_NOTIFY_FAILED", JSON.stringify({
         customer: maskPhone(message.from),
@@ -1257,22 +1258,22 @@ function safeJsonDetail(detail) {
   }
 }
 
-async function notifyStoreManualOrder(customerPhone, orderText, messageId) {
+async function notifyStoreManualOrder(customerPhone, orderText) {
   const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
 
-  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText, messageId));
+  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText));
 }
 
-async function notifyStoreHumanRequest(customerPhone, messageId) {
+async function notifyStoreHumanRequest(customerPhone) {
   const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
 
-  return sendTextMessage(to, formatHumanRequestNotification(customerPhone, messageId));
+  return sendTextMessage(to, formatHumanRequestNotification(customerPhone));
 }
 
 function normalizeStoreNotifyNumber(value = "") {
@@ -1284,36 +1285,35 @@ function normalizeStoreNotifyNumber(value = "") {
   return digits;
 }
 
-function formatHumanRequestNotification(customerPhone, messageId) {
+function formatHumanRequestNotification(customerPhone) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
   return [
     "ATENDIMENTO SOLICITADO VIA BIBI",
     "",
     `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
-    messageId ? `Mensagem ID: ${messageId}` : "",
     `Recebido: ${receivedAt}`,
     "",
     "O cliente escolheu a opcao 5 - Falar com a equipe.",
     "Acompanhe a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima."
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 }
 
-function formatManualOrderNotification(customerPhone, orderText, messageId) {
+function formatManualOrderNotification(customerPhone, orderText) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
   return [
     "NOVO PEDIDO VIA BIBI",
     "",
     `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
-    messageId ? `Mensagem ID: ${messageId}` : "",
     `Recebido: ${receivedAt}`,
     "",
     "Pedido enviado pelo cliente:",
-    formatCustomerOrder(orderText),
+    "",
+    formatCustomerOrderForTeam(orderText),
     "",
     "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar."
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 }
 
 async function getConversationSession(phone) {
@@ -1461,6 +1461,7 @@ function emptyOrderData() {
   return {
     name: "",
     address: "",
+    addressDraft: "",
     items: [],
     payment: "",
     changeFor: "",
@@ -1469,11 +1470,34 @@ function emptyOrderData() {
 }
 
 function normalizeOrderData(data = {}) {
-  return {
+  const order = {
     ...emptyOrderData(),
-    ...data,
+    name: String(data.name || ""),
+    address: String(data.address || ""),
+    addressDraft: String(data.addressDraft || ""),
+    payment: String(data.payment || ""),
+    changeFor: String(data.changeFor || ""),
+    notes: String(data.notes || ""),
     items: Array.isArray(data.items) ? data.items.filter(Boolean).map(String) : []
   };
+
+  if (isSuspiciousAddress(order.address)) {
+    order.address = "";
+  }
+
+  if (order.address) {
+    order.addressDraft = "";
+  }
+
+  if (order.changeFor && !order.payment) {
+    order.payment = "dinheiro";
+  }
+
+  if (order.payment !== "dinheiro") {
+    order.changeFor = "";
+  }
+
+  return order;
 }
 
 function extractOrderFields(rawText = "") {
@@ -1486,10 +1510,16 @@ function extractOrderFields(rawText = "") {
   const extracted = emptyOrderData();
 
   const explicitName = explicitField(rawText, ["nome"]);
-  if (explicitName && isValidName(explicitName)) extracted.name = explicitName;
+  if (explicitName && isValidName(explicitName)) {
+    extracted.name = explicitName;
+    extracted.nameIsExplicit = true;
+  }
 
   const explicitAddress = explicitField(rawText, ["endereco", "endereço"]);
-  if (explicitAddress && isValidAddress(explicitAddress)) extracted.address = explicitAddress;
+  if (explicitAddress && isValidAddress(explicitAddress)) {
+    extracted.address = explicitAddress;
+    extracted.addressIsExplicit = true;
+  }
 
   const explicitOrder = explicitField(rawText, ["pedido", "itens", "item"]);
   if (explicitOrder && hasFoodSignal(normalize(explicitOrder))) extracted.items.push(explicitOrder);
@@ -1497,8 +1527,25 @@ function extractOrderFields(rawText = "") {
   const explicitPayment = explicitField(rawText, ["pagamento", "forma de pagamento"]);
   if (explicitPayment) extracted.payment = parsePayment(normalize(explicitPayment));
 
+  const explicitChange = explicitField(rawText, ["troco", "troco para", "troco pra"]);
+  if (explicitChange) {
+    extracted.changeFor = parseChangeAnswer(`troco ${explicitChange}`)
+      || parseChangeAnswer(explicitChange, { allowNumericOnly: true });
+    if (extracted.changeFor && !extracted.payment) extracted.payment = "dinheiro";
+  }
+
   for (const line of lines) {
     const normalizedLine = normalize(line);
+    const payment = parsePayment(normalizedLine);
+    if (payment) extracted.payment = payment;
+
+    const changeFor = parseChangeAnswer(normalizedLine);
+    if (changeFor) extracted.changeFor = changeFor;
+
+    if (isPaymentOrChangeLine(normalizedLine) && !hasFoodSignal(normalizedLine) && !isValidAddress(line)) {
+      continue;
+    }
+
     if (!extracted.name && isValidName(line) && !hasFoodSignal(normalizedLine) && !hasPaymentSignal(normalizedLine) && !isValidAddress(line) && !isNonOrderMessage(normalizedLine)) {
       extracted.name = line;
       continue;
@@ -1513,12 +1560,6 @@ function extractOrderFields(rawText = "") {
       extracted.items.push(line);
       continue;
     }
-
-    const payment = parsePayment(normalizedLine);
-    if (payment) extracted.payment = payment;
-
-    const changeFor = parseChangeAnswer(normalizedLine);
-    if (changeFor) extracted.changeFor = changeFor;
   }
 
   const payment = parsePayment(text);
@@ -1542,8 +1583,23 @@ function extractOrderFields(rawText = "") {
 
 function mergeOrderData(current = emptyOrderData(), incoming = emptyOrderData()) {
   const next = normalizeOrderData(current);
-  if (incoming.name) next.name = incoming.name;
-  if (incoming.address) next.address = incoming.address;
+  if (incoming.name && (!next.name || incoming.nameIsExplicit)) next.name = incoming.name;
+  if (incoming.address) {
+    const address = next.addressDraft
+      ? [next.addressDraft, incoming.address].filter(Boolean).join(" ")
+      : incoming.address;
+    next.address = isValidAddress(address) ? address : incoming.address;
+    next.addressDraft = "";
+  }
+  if (incoming.addressDraft && !next.address) {
+    const address = [next.addressDraft, incoming.addressDraft].filter(Boolean).join(" ");
+    if (isValidAddress(address)) {
+      next.address = address;
+      next.addressDraft = "";
+    } else {
+      next.addressDraft = address;
+    }
+  }
   if (incoming.payment) next.payment = incoming.payment;
   if (!incoming.payment && incoming.changeFor && !next.payment) next.payment = "dinheiro";
   if (incoming.notes) next.notes = incoming.notes;
@@ -1559,6 +1615,54 @@ function mergeOrderData(current = emptyOrderData(), incoming = emptyOrderData())
   }
 
   return next;
+}
+
+function contextualizeIncomingOrderData(incoming = emptyOrderData(), current = emptyOrderData(), rawText = "") {
+  const next = { ...incoming };
+  const order = normalizeOrderData(current);
+  const onlyNameDetected = next.name
+    && !next.nameIsExplicit
+    && !next.address
+    && !next.items?.length
+    && !next.payment
+    && !next.changeFor;
+
+  if (order.name && !order.address && onlyNameDetected) {
+    next.addressDraft = next.name;
+    next.name = "";
+    return next;
+  }
+
+  const fragment = addressFragmentFromText(rawText, order, next);
+  if (fragment) {
+    next.addressDraft = fragment;
+  }
+
+  return next;
+}
+
+function addressFragmentFromText(rawText = "", current = emptyOrderData(), incoming = emptyOrderData()) {
+  if (incoming.address || incoming.name || incoming.items?.length || incoming.payment || incoming.changeFor) return "";
+
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length !== 1) return "";
+
+  const value = lines[0];
+  const text = normalize(value);
+  if (!text || text === normalize(current.name) || isNonOrderMessage(text) || hasFoodSignal(text) || isPaymentOrChangeLine(text)) {
+    return "";
+  }
+
+  const hasLetters = /[a-zA-ZÀ-ÿ]{2,}/.test(value);
+  const isHouseNumber = /^\d{1,6}[a-zA-Z]?$/.test(text);
+  if (isHouseNumber || hasAddressSignal(text) || (current.name && !current.address && hasLetters)) {
+    return value;
+  }
+
+  return "";
 }
 
 function explicitField(rawText, labels) {
@@ -1580,7 +1684,7 @@ function isValidName(value) {
     && !/^\d+$/.test(text)
     && !hasFoodSignal(normalizedText)
     && !hasPaymentSignal(normalizedText)
-    && !hasAny(normalizedText, ["rua", "avenida", "bairro", "cep", "referencia", "referência"]);
+    && !hasAddressSignal(normalizedText);
 }
 
 function isValidAddress(value) {
@@ -1588,16 +1692,63 @@ function isValidAddress(value) {
   const normalizedText = normalize(text);
   const hasNumber = /\b\d{1,6}\b/.test(normalizedText);
   const hasComplement = /[a-zA-ZÀ-ÿ]{3,}/.test(text)
-    || hasAny(normalizedText, ["rua", "avenida", "bairro", "vila", "cep", "referencia", "referência", "perto", "proximo", "próximo"]);
-  return hasNumber && hasComplement && !hasFoodSignal(normalizedText) && !hasPaymentSignal(normalizedText);
+    || hasAddressSignal(normalizedText);
+  return hasNumber
+    && hasComplement
+    && !hasFoodSignal(normalizedText)
+    && !hasPaymentSignal(normalizedText)
+    && !parseChangeAnswer(normalizedText)
+    && !isSuspiciousAddress(text);
 }
 
 function possibleAddressFromLines(lines) {
   for (let index = 0; index < lines.length; index += 1) {
+    if (isPaymentOrChangeLine(lines[index]) || isPaymentOrChangeLine(lines[index + 1])) continue;
     const joined = [lines[index], lines[index + 1]].filter(Boolean).join(" ");
     if (isValidAddress(joined)) return joined;
   }
   return "";
+}
+
+function isSuspiciousAddress(value = "") {
+  const text = normalize(value);
+  if (!text) return false;
+  return hasPaymentSignal(text)
+    || Boolean(parseChangeAnswer(text))
+    || hasAny(text, ["troco", "trico", "pix", "dinheiro", "cartao", "maquininha", "debito", "credito"]);
+}
+
+function isPaymentOrChangeLine(value = "") {
+  const text = normalize(value);
+  if (!text) return false;
+  return hasPaymentSignal(text) || Boolean(parseChangeAnswer(text));
+}
+
+function hasAddressSignal(text) {
+  return hasAny(text, [
+    "rua",
+    "avenida",
+    "bairro",
+    "vila",
+    "cep",
+    "referencia",
+    "ponto de referencia",
+    "perto",
+    "proximo",
+    "casa",
+    "apto",
+    "apartamento",
+    "numero",
+    "lote",
+    "quadra",
+    "travessa",
+    "estrada",
+    "rodovia",
+    "centro",
+    "jardim",
+    "alto",
+    "baixo"
+  ]);
 }
 
 function hasFoodSignal(text) {
@@ -1616,7 +1767,7 @@ function parsePayment(text) {
   return "";
 }
 
-function parseChangeAnswer(text) {
+function parseChangeAnswer(text, options = {}) {
   const normalizedText = normalize(text);
   if (["nao", "sem"].includes(normalizedText)
     || hasAny(normalizedText, ["sem troco", "nao precisa", "dispensa troco", "nao vou precisar de troco"])) {
@@ -1628,12 +1779,14 @@ function parseChangeAnswer(text) {
   const shortChange = normalizedText.match(/^(?:para|pra)\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
   if (shortChange) return shortChange[1].replace(",", ".");
 
+  if (!options.allowNumericOnly) return "";
+
   const numericOnly = normalizedText.match(/^\d{1,4}(?:[,.]\d{1,2})?$/);
   return numericOnly ? numericOnly[0].replace(",", ".") : "";
 }
 
 function shouldAnswerChange(text) {
-  return Boolean(parseChangeAnswer(text));
+  return Boolean(parseChangeAnswer(text, { allowNumericOnly: true }));
 }
 
 function orderCompleteness(data = emptyOrderData()) {
@@ -2393,6 +2546,17 @@ function formatCustomerOrder(orderText) {
   if (cleaned.length <= 900) return cleaned;
 
   return `${cleaned.slice(0, 900).trim()}\n...(pedido muito longo, equipe vai conferir a mensagem completa acima)`;
+}
+
+function formatCustomerOrderForTeam(orderText) {
+  const cleaned = formatCustomerOrder(orderText);
+  if (cleaned === "Pedido informado na conversa.") return cleaned;
+
+  return cleaned
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function isGreeting(text) {
