@@ -322,9 +322,21 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
   }
 
   if (isChoice(text, "5") || isHumanRequest(text) || hasAny(text, ["atendimento humano", "falar com equipe", "falar com humano"])) {
+    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    if (!teamNotification.ok) {
+      console.error("BCK_BIBI_HUMAN_NOTIFY_FAILED", JSON.stringify({
+        customer: maskPhone(message.from),
+        error: teamNotification.error
+      }));
+    } else {
+      console.log("BCK_BIBI_HUMAN_NOTIFY_SENT", JSON.stringify({
+        customer: maskPhone(message.from)
+      }));
+    }
+
     const next = forwardedSession(session.data, "human_requested");
     logStateChanged(message.from, session.state, next.state, "human_requested");
-    return withSession(next, humanReply());
+    return withSession(next, humanReply(teamNotification.ok));
   }
 
   if (isAssistantRequest(text) || isMenuRequest(text) || isGreeting(text) || cameFromMiniSite(text)) {
@@ -958,14 +970,21 @@ function manualOrderReceivedReply(orderText) {
   return lines.join("\n");
 }
 
-function humanReply() {
-  return [
-    "Certo. Vou deixar sua conversa para o setor responsavel acompanhar.",
+function humanReply(notified = true) {
+  const officialNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const lines = [
+    notified
+      ? "Certo. Avisei a equipe responsavel para acompanhar sua conversa."
+      : "Certo. Nao consegui avisar a equipe automaticamente agora, mas voce pode chamar o numero oficial abaixo.",
+    "",
+    `Numero oficial: https://wa.me/${officialNumber}`,
     "",
     "Se for pedido novo, pode mandar a mensagem completa aqui com nome, endereco, pedido e pagamento.",
     "",
     "A equipe confere tudo e te responde por aqui com a confirmacao."
-  ].join("\n");
+  ];
+
+  return lines.join("\n");
 }
 
 function repeatOrderReply(siteUrl) {
@@ -1158,6 +1177,15 @@ async function notifyStoreManualOrder(customerPhone, orderText, messageId) {
   return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText, messageId));
 }
 
+async function notifyStoreHumanRequest(customerPhone, messageId) {
+  const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
+  if (!to) {
+    return { ok: false, error: "store_notify_number_missing" };
+  }
+
+  return sendTextMessage(to, formatHumanRequestNotification(customerPhone, messageId));
+}
+
 function normalizeStoreNotifyNumber(value = "") {
   const digits = onlyDigits(value);
   if (!digits) return "";
@@ -1165,6 +1193,21 @@ function normalizeStoreNotifyNumber(value = "") {
   if (digits.length === 11) return `55${digits}`;
   if (digits.length === 9) return `5528${digits}`;
   return digits;
+}
+
+function formatHumanRequestNotification(customerPhone, messageId) {
+  const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+  return [
+    "ATENDIMENTO SOLICITADO VIA BIBI",
+    "",
+    `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
+    messageId ? `Mensagem ID: ${messageId}` : "",
+    `Recebido: ${receivedAt}`,
+    "",
+    "O cliente escolheu a opcao 5 - Falar com a equipe.",
+    "Acompanhe a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima."
+  ].filter(Boolean).join("\n");
 }
 
 function formatManualOrderNotification(customerPhone, orderText, messageId) {
