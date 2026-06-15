@@ -14,6 +14,7 @@ const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
+const BIBI_VERSION = "2026-06-15-official-notify-v2";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -90,6 +91,15 @@ exports.handler = async function handler(event) {
   }
 
   if (event.httpMethod === "GET") {
+    const params = event.queryStringParameters || {};
+    if (params.bck_health === "1") {
+      return json(200, {
+        ok: true,
+        version: BIBI_VERSION,
+        storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677")
+      });
+    }
+
     return verifyWebhook(event);
   }
 
@@ -326,7 +336,9 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
     if (!teamNotification.ok) {
       console.error("BCK_BIBI_HUMAN_NOTIFY_FAILED", JSON.stringify({
         customer: maskPhone(message.from),
-        error: teamNotification.error
+        error: teamNotification.error,
+        status: teamNotification.status || null,
+        detail: teamNotification.detail || null
       }));
     } else {
       console.log("BCK_BIBI_HUMAN_NOTIFY_SENT", JSON.stringify({
@@ -450,7 +462,9 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
     if (!storeNotification.ok) {
       console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
         customer: maskPhone(message.from),
-        error: storeNotification.error
+        error: storeNotification.error,
+        status: storeNotification.status || null,
+        detail: storeNotification.detail || null
       }));
     } else {
       console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
@@ -461,6 +475,17 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
 
     const next = forwardedSession(session.data, "confirmed");
     logStateChanged(message.from, session.state, next.state, "confirmed");
+    if (!storeNotification.ok) {
+      return withSession(next, [
+        "Recebi seu pedido, mas nao consegui avisar a equipe automaticamente agora.",
+        "",
+        "Resumo do pedido:",
+        summary,
+        "",
+        "Por favor, chame a equipe no numero oficial: https://wa.me/5528999329677"
+      ].join("\n"));
+    }
+
     return withSession(next, "Ja encaminhei pra equipe! Eles vao confirmar por aqui em breve.");
   }
 
@@ -488,7 +513,9 @@ async function forwardCompletedOrder(message, session, reason) {
   if (!storeNotification.ok) {
     console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
       customer: maskPhone(message.from),
-      error: storeNotification.error
+      error: storeNotification.error,
+      status: storeNotification.status || null,
+      detail: storeNotification.detail || null
     }));
   } else {
     console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
@@ -1161,11 +1188,35 @@ async function sendTextMessage(to, body) {
 
   if (!response.ok) {
     const detail = await response.text();
-    console.error("WhatsApp send failed", detail);
-    return { ok: false, error: "whatsapp_send_failed" };
+    console.error("WhatsApp send failed", JSON.stringify({
+      to: maskPhone(to),
+      status: response.status,
+      detail
+    }));
+    return {
+      ok: false,
+      error: "whatsapp_send_failed",
+      status: response.status,
+      detail: safeJsonDetail(detail)
+    };
   }
 
   return { ok: true };
+}
+
+function safeJsonDetail(detail) {
+  try {
+    const parsed = JSON.parse(detail);
+    const error = parsed?.error || parsed;
+    return {
+      message: error?.message || "",
+      code: error?.code || null,
+      subcode: error?.error_subcode || null,
+      title: error?.error_user_title || ""
+    };
+  } catch {
+    return { message: String(detail || "").slice(0, 300) };
+  }
 }
 
 async function notifyStoreManualOrder(customerPhone, orderText, messageId) {
