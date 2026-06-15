@@ -13,8 +13,20 @@ const CITY = process.env.BCK_CITY || "Cachoeiro";
 const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
-const HUMAN_HANDOFF_MINUTES = Math.max(0, Number(process.env.BCK_HUMAN_HANDOFF_MINUTES || 60));
+const HUMAN_HANDOFF_MINUTES = Math.max(0, Number(process.env.BCK_HUMAN_HANDOFF_MINUTES || 5));
 const ORDER_DRAFT_MINUTES = Math.max(5, Number(process.env.BCK_ORDER_DRAFT_MINUTES || 30));
+const HUMAN_HANDOFF_RESET_KEYWORDS = (process.env.BCK_HUMAN_HANDOFF_RESET_KEYWORDS || [
+  AI_ASSISTANT_KEYWORD,
+  "bibi",
+  "menu",
+  "reiniciar",
+  "resetar",
+  "resetar bibi",
+  "reset bibi",
+  "novo atendimento",
+  "teste bibi",
+  "testar bibi"
+].join(",")).split(",").map(normalize).filter(Boolean);
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -50,14 +62,23 @@ exports.handler = async function handler(event) {
     let manualOrderText = isNewManualOrder ? rawText : "";
     let replyText = "";
     const orderDraft = isNewManualOrder ? null : await getOrderDraft(message.from);
+    const shouldResetHandoff = shouldResetHumanHandoff(normalizedText);
 
     if (!isNewManualOrder && await isHumanHandoffActive(message.from)) {
-      replies.push({
-        to: message.from,
-        sent: false,
-        reason: "human_handoff_active"
-      });
-      continue;
+      if (shouldResetHandoff) {
+        await deleteHumanHandoff(message.from);
+      } else {
+        replies.push({
+          to: message.from,
+          sent: false,
+          reason: "human_handoff_active"
+        });
+        continue;
+      }
+    }
+
+    if (shouldResetHandoff && !isNewManualOrder) {
+      await deleteOrderDraft(message.from);
     }
 
     if (orderDraft && isDraftCompletion(normalizedText)) {
@@ -865,6 +886,25 @@ async function saveHumanHandoff(phone, messageId) {
   }
 }
 
+async function deleteHumanHandoff(phone) {
+  const key = humanHandoffKey(phone);
+  if (!key) return;
+
+  try {
+    const store = await getBlobStore("bck-whatsapp-handoff");
+    await store.delete(key);
+    console.log("BCK_BIBI_HANDOFF_RESET", JSON.stringify({
+      phone: maskPhone(phone)
+    }));
+  } catch (error) {
+    console.error("BCK_BIBI_HANDOFF_RESET_ERROR", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error),
+      name: error?.name || "Error"
+    }));
+  }
+}
+
 async function getOrderDraft(phone) {
   const key = humanHandoffKey(phone);
   if (!key) return null;
@@ -1188,6 +1228,12 @@ function isClarifyingQuestion(text) {
       "funciona",
       "aberto"
     ]);
+}
+
+function shouldResetHumanHandoff(text) {
+  if (!text) return false;
+  return HUMAN_HANDOFF_RESET_KEYWORDS.some((keyword) => keyword && text === keyword)
+    || HUMAN_HANDOFF_RESET_KEYWORDS.some((keyword) => keyword && text.includes(keyword));
 }
 
 function isHumanRequest(text) {
