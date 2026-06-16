@@ -29,7 +29,7 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-16-v32-cep-maps-v3";
+const BIBI_VERSION = "2026-06-16-v32-troco-cep-fix-v4";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -509,9 +509,10 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
   }
 
   if (isOnlyMissingChange(pendingBefore) && shouldAnswerChange(text)) {
+    const changeAnswer = parseChangeAnswer(text, { allowNumericOnly: true });
     next.data = {
       ...next.data,
-      changeFor: parseChangeAnswer(text, { allowNumericOnly: true }) || "nao"
+      changeFor: changeAnswer || "nao"
     };
     const confirming = confirmingSession(next.data, "change_answered");
     return forwardCompletedOrder(message, confirming, "change_answered");
@@ -2396,7 +2397,9 @@ function shouldReplaceRuleItemWithAI(ruleItem = "", aiItems = []) {
 
 async function enrichAddressWithCep(rawText = "", current = emptyOrderData(), incoming = emptyOrderData()) {
   const cep = extractCep(rawText);
-  const weakAddress = isWeakNumberAddress(incoming.address);
+  const weakAddress = isWeakNumberAddress(incoming.address)
+    || isCepAndNumberOnlyAddress(incoming.address)
+    || isWeakCepAddress(incoming.address);
   if (!CEP_LOOKUP_ENABLED || !cep || (incoming.address && !weakAddress)) return incoming;
 
   const cepAddress = await lookupCepAddress(cep);
@@ -2431,6 +2434,25 @@ function isCepOnlyAddress(value = "") {
     .replace(/[^\w]+/g, "")
     .trim();
   return !withoutCep;
+}
+
+function isCepAndNumberOnlyAddress(value = "") {
+  if (!extractCep(value)) return false;
+  const leftover = normalize(value)
+    .replace(/\bcep\b/g, "")
+    .replace(/\b\d{5}-?\d{3}\b/g, " ")
+    .replace(/[^\w]+/g, " ")
+    .trim();
+  return /^\d{1,6}[a-zA-Z]?$/.test(leftover);
+}
+
+function isWeakCepAddress(value = "") {
+  if (!extractCep(value)) return false;
+  const leftover = normalize(value)
+    .replace(/\bcep\b/g, "")
+    .replace(/\b\d{5}-?\d{3}\b/g, " ")
+    .trim();
+  return !hasAny(leftover, ["rua", "avenida", "av ", "travessa", "alameda", "praca", "praça", "rodovia", "estrada", "bairro", "vila"]);
 }
 
 function isWeakNumberAddress(value = "") {
@@ -2513,6 +2535,16 @@ function extractHouseNumberForCep(rawText = "") {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  for (const line of lines) {
+    if (!extractCep(line)) continue;
+    const leftover = normalize(line)
+      .replace(/\bcep\b/g, "")
+      .replace(/\b\d{5}-?\d{3}\b/g, " ")
+      .replace(/[^\w]+/g, " ")
+      .trim();
+    if (/^\d{1,6}[a-zA-Z]?$/.test(leftover)) return leftover;
+  }
+
   const numericLine = lines.find((line) => /^\d{1,6}[a-zA-Z]?$/.test(line));
   return numericLine || "";
 }
@@ -2570,7 +2602,7 @@ function extractOrderFields(rawText = "") {
   }
 
   const explicitOrder = explicitField(rawText, ["pedido", "itens", "item"]);
-  if (explicitOrder && hasFoodSignal(normalize(explicitOrder))) extracted.items.push(explicitOrder);
+  if (explicitOrder && hasFoodSignal(normalize(explicitOrder)) && !isPriceOrValueQuestion(explicitOrder)) extracted.items.push(explicitOrder);
 
   const explicitPayment = explicitField(rawText, ["pagamento", "forma de pagamento"]);
   if (explicitPayment) extracted.payment = parsePayment(normalize(explicitPayment));
@@ -2604,7 +2636,7 @@ function extractOrderFields(rawText = "") {
       continue;
     }
 
-    if (hasFoodSignal(normalizedLine)) {
+    if (hasFoodSignal(normalizedLine) && !isPriceOrValueQuestion(line)) {
       extracted.items.push(line);
       continue;
     }
@@ -2718,6 +2750,7 @@ function contextualizeIncomingOrderData(incoming = emptyOrderData(), current = e
 
 function addressFragmentFromText(rawText = "", current = emptyOrderData(), incoming = emptyOrderData()) {
   if (incoming.address || incoming.name || incoming.items?.length || incoming.payment || incoming.changeFor) return "";
+  if (isPriceOrValueQuestion(rawText)) return "";
 
   const lines = String(rawText || "")
     .split(/\r?\n/)
@@ -2757,6 +2790,7 @@ function isValidName(value) {
   const normalizedText = normalize(text);
   return /[a-zA-ZÀ-ÿ]{3,}/.test(text)
     && !/^\d+$/.test(text)
+    && !isPriceOrValueQuestion(text)
     && !hasFoodSignal(normalizedText)
     && !hasPaymentSignal(normalizedText)
     && !hasAddressSignal(normalizedText);
@@ -2765,6 +2799,8 @@ function isValidName(value) {
 function isValidAddress(value) {
   const text = String(value || "").trim();
   const normalizedText = normalize(text);
+  if (isPriceOrValueQuestion(text)) return false;
+  if (isCepOnlyAddress(text) || isCepAndNumberOnlyAddress(text) || isWeakCepAddress(text)) return false;
   const textWithoutCep = normalizedText.replace(/\b\d{5}-?\d{3}\b/g, " ");
   const hasNumber = /\b\d{1,6}\b/.test(textWithoutCep);
   const hasComplement = /[a-zA-ZÀ-ÿ]{3,}/.test(text)
@@ -2794,6 +2830,7 @@ function possibleAddressDraftFromLines(lines, extracted = emptyOrderData()) {
     const line = lines[index];
     const text = normalize(line);
     if (!text || text === name || hasFoodSignal(text) || isPaymentOrChangeLine(text) || isNonOrderMessage(text)) continue;
+    if (isPriceOrValueQuestion(line)) continue;
     if (isCepOnlyAddress(line)) continue;
     if (/^\d{1,6}[a-zA-Z]?$/.test(text)) continue;
 
@@ -2813,7 +2850,8 @@ function possibleAddressDraftFromLines(lines, extracted = emptyOrderData()) {
 function isSuspiciousAddress(value = "") {
   const text = normalize(value);
   if (!text) return false;
-  return hasPaymentSignal(text)
+  return isPriceOrValueQuestion(text)
+    || hasPaymentSignal(text)
     || Boolean(parseChangeAnswer(text))
     || hasAny(text, [...CHANGE_KEYWORDS, "pix", "dinheiro", "cartao", "maquininha", "debito", "credito"]);
 }
@@ -2857,6 +2895,25 @@ function hasFoodSignal(text) {
 
 function hasPaymentSignal(text) {
   return Boolean(parsePayment(text)) || hasAny(text, CHANGE_KEYWORDS);
+}
+
+function isPriceOrValueQuestion(value = "") {
+  const text = normalize(value);
+  if (!text) return false;
+  return hasAny(text, [
+    "quanto custa",
+    "qual valor",
+    "valor?",
+    "preco",
+    "preço",
+    "vai dar",
+    "fica quanto",
+    "quanto fica",
+    "total",
+    "reais ne",
+    "reais né",
+    "r$"
+  ]);
 }
 
 function cleanOrderItems(items = []) {
@@ -2908,15 +2965,35 @@ function parsePayment(text) {
 
 function parseChangeAnswer(text, options = {}) {
   const normalizedText = normalize(text);
-  if (["nao", "sem"].includes(normalizedText)
-    || hasAny(normalizedText, ["sem troco", "nao precisa", "dispensa troco", "nao vou precisar de troco"])) {
+  if ([
+    "nao",
+    "não",
+    "n",
+    "sem",
+    "nao precisa",
+    "não precisa",
+    "nao preciso",
+    "não preciso",
+    "sem troco",
+    "dispensa troco",
+    "nao quero troco",
+    "não quero troco"
+  ].includes(normalizedText)
+    || hasAny(normalizedText, ["sem troco", "nao precisa", "dispensa troco", "nao vou precisar de troco", "nao quero troco"])) {
     return "nao";
   }
+
   const directChange = normalizedText.match(/\b(?:troco|trico|troca|trocco)\s*(?:para|pra|de|em)?\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
   if (directChange) return directChange[1].replace(",", ".");
 
-  const shortChange = normalizedText.match(/^(?:para|pra)\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
+  const looseChange = normalizedText.match(/\b(?:troco|trico|troca|trocco)\D{0,16}(\d{1,4}(?:[,.]\d{1,2})?)\b/);
+  if (looseChange) return looseChange[1].replace(",", ".");
+
+  const shortChange = normalizedText.match(/^(?:sim\s*)?(?:para|pra)\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
   if (shortChange) return shortChange[1].replace(",", ".");
+
+  const yesValue = normalizedText.match(/^sim\D{0,12}(\d{1,4}(?:[,.]\d{1,2})?)\b/);
+  if (yesValue) return yesValue[1].replace(",", ".");
 
   if (!options.allowNumericOnly) return "";
 
@@ -2960,7 +3037,7 @@ function formatOrderSummary(data = emptyOrderData()) {
     order.address ? `Endereco: ${order.address}` : "",
     order.items.length ? `Pedido: ${formatItemsForSummary(order.items)}` : "",
     order.payment ? `Pagamento: ${paymentLabel(order.payment)}` : "",
-    order.payment === "dinheiro" ? `Troco: ${order.changeFor === "nao" ? "nao precisa" : `para ${order.changeFor}`}` : "",
+    order.payment === "dinheiro" && order.changeFor ? `Troco: ${order.changeFor === "nao" ? "nao precisa" : `para ${order.changeFor}`}` : "",
     order.notes ? `Obs: ${order.notes}` : ""
   ].filter(Boolean).join("\n");
 }
@@ -3112,7 +3189,26 @@ function chickenGuidanceReply() {
 function askMissingFieldsReply(data, missing, options = {}) {
   const order = normalizeOrderData(data);
 
-  if (missing.includes("troco")) {
+  if (missing.includes("endereco") && order.addressDraft) {
+    return [
+      "Anotei o endereco assim:",
+      order.addressDraft,
+      "",
+      "Falta so o numero da casa/comercio. Pode me mandar?",
+      "",
+      "Se souber complemento ou ponto de referencia, pode mandar junto."
+    ].join("\n");
+  }
+
+  if (missing.includes("endereco")) {
+    return [
+      "Beleza. Agora me passa o endereco completo, por favor.",
+      "",
+      "Se souber o CEP da rua, manda junto. Assim eu puxo rua e bairro certinho."
+    ].join("\n");
+  }
+
+  if (missing.length === 1 && missing[0] === "troco") {
     return [
       "Anotei ate agora:",
       formatOrderSummary(order),
@@ -3122,25 +3218,6 @@ function askMissingFieldsReply(data, missing, options = {}) {
   }
 
   const labels = missingFieldLabels(missing);
-
-  if (missing.length === 1 && missing[0] === "endereco" && order.addressDraft) {
-    return [
-      "Anotei o endereco assim:",
-      order.addressDraft,
-      "",
-      "Falta so o numero da casa/comercio. Pode me mandar?",
-      "",
-      "Se souber o CEP da rua, pode mandar tambem que ajuda a conferir."
-    ].join("\n");
-  }
-
-  if (missing.length === 1 && missing[0] === "endereco") {
-    return [
-      "Beleza. Agora me passa o endereco completo, por favor.",
-      "",
-      "Se souber o CEP da rua, manda junto. Assim eu puxo rua e bairro certinho."
-    ].join("\n");
-  }
 
   if (labels.length === 1) {
     if (options.mode === SERVICE_MODES.EXPRESS || isPeakServiceHour()) {
@@ -4018,6 +4095,9 @@ if (process.env.NODE_ENV === "test") {
     extractCep,
     lookupCepAddress,
     orderMapLinks,
+    parseChangeAnswer,
+    askMissingFieldsReply,
+    isPriceOrValueQuestion,
     mergeRuleAndAIOrderData,
     sanitizeAIOrderData,
     isManualOrder,
