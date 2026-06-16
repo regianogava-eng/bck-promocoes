@@ -19,7 +19,7 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-phase1b-ai-interpreter-v1";
+const BIBI_VERSION = "2026-06-16-phase1b-ai-gateway-v2";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -109,7 +109,9 @@ exports.handler = async function handler(event) {
         version: BIBI_VERSION,
         storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677"),
         aiInterpreterEnabled: AI_INTERPRETER_ENABLED,
-        aiInterpreterModel: AI_INTERPRETER_MODEL
+        aiInterpreterModel: AI_INTERPRETER_MODEL,
+        aiInterpreterAccess: hasAIInterpreterAccess(),
+        aiInterpreterSource: aiCredentialSource()
       });
     }
 
@@ -2102,19 +2104,18 @@ function shouldUseAIInterpreter(rawText = "") {
 }
 
 function hasAIInterpreterAccess() {
-  return Boolean(process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL);
+  return Boolean(aiApiKey() && aiBaseUrl());
 }
 
 async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData(), ruleExtraction = emptyOrderData(), context = "order") {
-  const baseUrl = aiBaseUrl();
-  if (!baseUrl) return { ok: false, error: "ai_credentials_missing" };
+  const url = aiResponsesUrl();
+  const apiKey = aiApiKey();
+  if (!url || !apiKey) return { ok: false, error: "ai_credentials_missing" };
 
   const headers = {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`
   };
-  if (process.env.OPENAI_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.OPENAI_API_KEY}`;
-  }
 
   const requestBody = {
     model: AI_INTERPRETER_MODEL,
@@ -2137,7 +2138,7 @@ async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData
   };
 
   try {
-    const response = await fetch(`${baseUrl}/responses`, {
+    const response = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody)
@@ -2172,9 +2173,42 @@ async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData
 }
 
 function aiBaseUrl() {
-  if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL.replace(/\/$/, "");
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_BASE_URL) {
+    return cleanAIBaseUrl(process.env.OPENAI_BASE_URL);
+  }
+
+  if (process.env.NETLIFY_AI_GATEWAY_KEY && process.env.NETLIFY_AI_GATEWAY_BASE_URL) {
+    return cleanAIBaseUrl(process.env.NETLIFY_AI_GATEWAY_BASE_URL);
+  }
+
   if (process.env.OPENAI_API_KEY) return "https://api.openai.com/v1";
   return "";
+}
+
+function aiApiKey() {
+  if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY;
+  if (process.env.NETLIFY_AI_GATEWAY_KEY && process.env.NETLIFY_AI_GATEWAY_BASE_URL) {
+    return process.env.NETLIFY_AI_GATEWAY_KEY;
+  }
+  return "";
+}
+
+function aiResponsesUrl() {
+  const baseUrl = aiBaseUrl();
+  if (!baseUrl) return "";
+  return /\/v1$/i.test(baseUrl) ? `${baseUrl}/responses` : `${baseUrl}/v1/responses`;
+}
+
+function cleanAIBaseUrl(value = "") {
+  return String(value || "").replace(/\/+$/, "");
+}
+
+function aiCredentialSource() {
+  if (process.env.OPENAI_API_KEY && process.env.OPENAI_BASE_URL) return "openai_env";
+  if (process.env.NETLIFY_AI_GATEWAY_KEY && process.env.NETLIFY_AI_GATEWAY_BASE_URL) return "netlify_ai_gateway";
+  if (process.env.OPENAI_API_KEY) return "openai_direct";
+  if (process.env.OPENAI_BASE_URL || process.env.NETLIFY_AI_GATEWAY_BASE_URL) return "base_url_without_key";
+  return "missing";
 }
 
 function aiInterpreterInstructions() {
