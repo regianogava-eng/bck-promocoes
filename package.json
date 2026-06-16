@@ -4,6 +4,7 @@
   "private": true,
   "description": "Site de promocoes BCK Beer Chicken",
   "dependencies": {
-    "@netlify/blobs": "^10.7.4"
+    "@netlify/blobs": "^10.7.4",
+    "openai": "^6.42.0"
   }
 }
