@@ -15,8 +15,9 @@ const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
+const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
-const BIBI_VERSION = "2026-06-16-phase1-human-review-v2";
+const BIBI_VERSION = "2026-06-16-phase1-human-review-v4";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -108,6 +109,10 @@ exports.handler = async function handler(event) {
       });
     }
 
+    if (params.bck_notify_logs === "1") {
+      return listNotificationLogs(event);
+    }
+
     return verifyWebhook(event);
   }
 
@@ -126,6 +131,8 @@ exports.handler = async function handler(event) {
     return json(400, { ok: false, error: "invalid_json" });
   }
 
+  const statuses = extractMessageStatuses(payload);
+  const statusUpdates = statuses.length ? await handleMessageStatuses(statuses) : [];
   const messages = extractMessages(payload);
   const replies = [];
 
@@ -158,7 +165,7 @@ exports.handler = async function handler(event) {
     });
   }
 
-  return json(200, { ok: true, received: messages.length, replies });
+  return json(200, { ok: true, received: messages.length, statuses: statusUpdates.length, replies });
 };
 
 function verifyWebhook(event) {
@@ -220,6 +227,32 @@ function extractMessages(payload) {
   }
 
   return messages.filter((message) => message.from && message.text);
+}
+
+function extractMessageStatuses(payload) {
+  const statuses = [];
+  const entries = Array.isArray(payload.entry) ? payload.entry : [];
+
+  for (const entry of entries) {
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    for (const change of changes) {
+      const value = change.value || {};
+      const outgoingStatuses = Array.isArray(value.statuses) ? value.statuses : [];
+      for (const item of outgoingStatuses) {
+        statuses.push({
+          id: item.id || "",
+          status: item.status || "",
+          timestamp: item.timestamp || "",
+          recipientId: item.recipient_id || "",
+          conversationId: item.conversation?.id || "",
+          errors: Array.isArray(item.errors) ? item.errors : [],
+          raw: item
+        });
+      }
+    }
+  }
+
+  return statuses.filter((status) => status.id && status.status);
 }
 
 function messageText(item) {
@@ -350,7 +383,9 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
       }));
     } else {
       console.log("BCK_BIBI_HUMAN_NOTIFY_SENT", JSON.stringify({
-        customer: maskPhone(message.from)
+        customer: maskPhone(message.from),
+        logId: teamNotification.notificationLog?.logId || null,
+        metaMessageId: teamNotification.messageId || null
       }));
     }
 
@@ -524,6 +559,8 @@ async function forwardCompletedOrder(message, session, reason) {
     console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
       customer: maskPhone(message.from),
       orderId: orderRecord.id,
+      logId: storeNotification.notificationLog?.logId || null,
+      metaMessageId: storeNotification.messageId || null,
       chars: summary.length
     }));
   }
@@ -579,7 +616,9 @@ async function handleForwardedState({ message, session, rawText, text, siteUrl }
       }));
     } else {
       console.log("BCK_BIBI_HUMAN_NOTIFY_SENT", JSON.stringify({
-        customer: maskPhone(message.from)
+        customer: maskPhone(message.from),
+        logId: teamNotification.notificationLog?.logId || null,
+        metaMessageId: teamNotification.messageId || null
       }));
     }
 
@@ -1247,7 +1286,19 @@ async function sendTextMessage(to, body) {
     };
   }
 
-  return { ok: true };
+  let responseBody = {};
+  try {
+    responseBody = await response.json();
+  } catch {
+    responseBody = {};
+  }
+
+  return {
+    ok: true,
+    messageId: responseBody?.messages?.[0]?.id || "",
+    contacts: Array.isArray(responseBody?.contacts) ? responseBody.contacts : [],
+    raw: responseBody
+  };
 }
 
 function safeJsonDetail(detail) {
@@ -1271,16 +1322,38 @@ async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = nu
     return { ok: false, error: "store_notify_number_missing" };
   }
 
-  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText, orderRecord, queueResult));
+  const body = formatManualOrderNotification(customerPhone, orderText, orderRecord, queueResult);
+  const sent = await sendTextMessage(to, body);
+  const notificationLog = await saveStoreNotificationLog({
+    type: "store_order_review",
+    to,
+    customerPhone,
+    orderId: orderRecord?.id || "",
+    body,
+    sendResult: sent
+  });
+
+  return { ...sent, notificationLog };
 }
 
-async function notifyStoreHumanRequest(customerPhone) {
+async function notifyStoreHumanRequest(customerPhone, sourceMessageId = "") {
   const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
 
-  return sendTextMessage(to, formatHumanRequestNotification(customerPhone));
+  const body = formatHumanRequestNotification(customerPhone);
+  const sent = await sendTextMessage(to, body);
+  const notificationLog = await saveStoreNotificationLog({
+    type: "store_human_request",
+    to,
+    customerPhone,
+    sourceMessageId,
+    body,
+    sendResult: sent
+  });
+
+  return { ...sent, notificationLog };
 }
 
 function normalizeStoreNotifyNumber(value = "") {
@@ -1336,6 +1409,304 @@ function formatManualOrderNotification(customerPhone, orderText, orderRecord = n
     "",
     "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar."
   ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
+}
+
+async function saveStoreNotificationLog({ type, to, customerPhone, orderId = "", sourceMessageId = "", body = "", sendResult = {} } = {}) {
+  const now = new Date().toISOString();
+  const metaMessageId = sendResult.messageId || "";
+  const logId = createNotificationLogId(metaMessageId);
+  const status = sendResult.ok ? "accepted_by_meta" : "send_failed";
+  const record = {
+    id: logId,
+    type: type || "store_notification",
+    status,
+    createdAt: now,
+    updatedAt: now,
+    to: onlyDigits(to),
+    customerPhone: onlyDigits(customerPhone),
+    orderId,
+    sourceMessageId,
+    metaMessageId,
+    messageChars: String(body || "").length,
+    messagePreview: String(body || "").slice(0, 500),
+    sendError: sendResult.ok ? null : sendResult.error || "unknown_send_error",
+    sendDetail: sendResult.ok ? null : sendResult.detail || null,
+    contacts: sendResult.contacts || [],
+    statusHistory: [{
+      status,
+      at: now,
+      source: "send_api",
+      metaMessageId
+    }]
+  };
+
+  try {
+    const store = await getBlobStore(BIBI_NOTIFY_LOG_STORE);
+    await store.setJSON(`logs/${logId}`, record, {
+      metadata: notificationMetadata(record)
+    });
+
+    if (metaMessageId) {
+      await store.setJSON(notificationMessageKey(metaMessageId), record, {
+        metadata: notificationMetadata(record)
+      });
+    }
+
+    if (orderId) {
+      await store.setJSON(`orders/${orderId}/${logId}`, {
+        id: logId,
+        orderId,
+        metaMessageId,
+        status,
+        to: record.to,
+        createdAt: now
+      }, {
+        metadata: notificationMetadata(record)
+      });
+    }
+
+    console.log("BCK_BIBI_STORE_NOTIFY_ACCEPTED", JSON.stringify({
+      logId,
+      orderId: orderId || null,
+      to: maskPhone(record.to),
+      customer: maskPhone(record.customerPhone),
+      metaMessageId: metaMessageId || null,
+      status
+    }));
+
+    return { ok: true, logId, metaMessageId, status };
+  } catch (error) {
+    console.error("BCK_BIBI_STORE_NOTIFY_LOG_FAILED", JSON.stringify({
+      logId,
+      orderId: orderId || null,
+      to: maskPhone(to),
+      error: error?.message || String(error)
+    }));
+    return { ok: false, logId, metaMessageId, status, error: error?.message || String(error) };
+  }
+}
+
+async function handleMessageStatuses(statuses = []) {
+  const updates = [];
+
+  for (const status of statuses) {
+    updates.push(await saveStoreNotificationStatus(status));
+  }
+
+  return updates;
+}
+
+async function saveStoreNotificationStatus(status = {}) {
+  const now = new Date().toISOString();
+  const statusAt = metaTimestampToIso(status.timestamp) || now;
+  const messageKey = notificationMessageKey(status.id);
+
+  try {
+    const store = await getBlobStore(BIBI_NOTIFY_LOG_STORE);
+    const existing = await store.get(messageKey, { consistency: "strong", type: "json" });
+    const historyEntry = {
+      status: status.status,
+      at: statusAt,
+      receivedAt: now,
+      source: "meta_webhook_status",
+      recipientId: onlyDigits(status.recipientId),
+      conversationId: status.conversationId || "",
+      errors: safeStatusErrors(status.errors)
+    };
+    const record = existing && typeof existing === "object"
+      ? {
+          ...existing,
+          status: status.status,
+          updatedAt: now,
+          to: existing.to || onlyDigits(status.recipientId),
+          recipientId: onlyDigits(status.recipientId),
+          conversationId: status.conversationId || existing.conversationId || "",
+          statusHistory: [...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []), historyEntry]
+        }
+      : {
+          id: createNotificationLogId(status.id),
+          type: "whatsapp_status_without_send_log",
+          status: status.status,
+          createdAt: now,
+          updatedAt: now,
+          to: onlyDigits(status.recipientId),
+          recipientId: onlyDigits(status.recipientId),
+          customerPhone: "",
+          orderId: "",
+          metaMessageId: status.id,
+          conversationId: status.conversationId || "",
+          statusHistory: [historyEntry]
+        };
+
+    await store.setJSON(messageKey, record, {
+      metadata: notificationMetadata(record)
+    });
+    await store.setJSON(`logs/${record.id}`, record, {
+      metadata: notificationMetadata(record)
+    });
+
+    console.log("BCK_BIBI_STORE_MESSAGE_STATUS", JSON.stringify({
+      logId: record.id,
+      orderId: record.orderId || null,
+      to: maskPhone(record.to || record.recipientId),
+      metaMessageId: status.id,
+      status: status.status,
+      at: statusAt,
+      errors: historyEntry.errors.length
+    }));
+
+    return { ok: true, logId: record.id, status: status.status, metaMessageId: status.id };
+  } catch (error) {
+    console.error("BCK_BIBI_STORE_MESSAGE_STATUS_FAILED", JSON.stringify({
+      metaMessageId: status.id || null,
+      status: status.status || null,
+      error: error?.message || String(error)
+    }));
+    return { ok: false, status: status.status || "", metaMessageId: status.id || "", error: error?.message || String(error) };
+  }
+}
+
+function createNotificationLogId(metaMessageId = "") {
+  const now = new Date().toISOString().replace(/\D/g, "").slice(2, 14);
+  const hash = metaMessageId
+    ? crypto.createHash("sha256").update(metaMessageId).digest("hex").slice(0, 10).toUpperCase()
+    : crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `NOTIFY-${now}-${hash}`;
+}
+
+function notificationMessageKey(metaMessageId = "") {
+  const hash = crypto.createHash("sha256").update(String(metaMessageId || "")).digest("hex");
+  return `messages/${hash}`;
+}
+
+function notificationMetadata(record = {}) {
+  return {
+    status: record.status || "",
+    type: record.type || "",
+    to: record.to || record.recipientId || "",
+    orderId: record.orderId || "",
+    metaMessageId: record.metaMessageId || "",
+    updatedAt: record.updatedAt || ""
+  };
+}
+
+function metaTimestampToIso(value = "") {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+  return new Date(timestamp * 1000).toISOString();
+}
+
+function safeStatusErrors(errors = []) {
+  return (Array.isArray(errors) ? errors : []).map((error) => ({
+    code: error?.code || null,
+    title: error?.title || "",
+    message: error?.message || error?.error_data?.details || "",
+    details: error?.error_data?.details || ""
+  }));
+}
+
+async function listNotificationLogs(event) {
+  const auth = notificationLogAuth(event);
+  if (!auth.ok) {
+    return json(auth.statusCode, {
+      ok: false,
+      error: auth.error,
+      message: auth.message
+    });
+  }
+
+  const params = event.queryStringParameters || {};
+  const limit = Math.min(50, Math.max(1, Number(params.limit || 20)));
+
+  try {
+    const store = await getBlobStore(BIBI_NOTIFY_LOG_STORE);
+    const listed = await store.list({ prefix: "logs/" });
+    const blobs = Array.isArray(listed?.blobs) ? listed.blobs : [];
+    const records = [];
+
+    for (const blob of blobs.slice(-100)) {
+      const record = await store.get(blob.key, { consistency: "strong", type: "json" });
+      if (record) records.push(redactNotificationLog(record));
+    }
+
+    records.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+
+    return json(200, {
+      ok: true,
+      version: BIBI_VERSION,
+      count: Math.min(records.length, limit),
+      logs: records.slice(0, limit)
+    });
+  } catch (error) {
+    return json(500, {
+      ok: false,
+      error: "notification_log_read_failed",
+      message: error?.message || String(error)
+    });
+  }
+}
+
+function notificationLogAuth(event) {
+  const expected = process.env.BCK_NOTIFY_LOG_TOKEN || process.env.BCK_ADMIN_TOKEN || "";
+  if (!expected) {
+    return {
+      ok: false,
+      statusCode: 503,
+      error: "notification_log_token_not_configured",
+      message: "Configure BCK_NOTIFY_LOG_TOKEN no Netlify para consultar os logs com seguranca."
+    };
+  }
+
+  const params = event.queryStringParameters || {};
+  const headers = event.headers || {};
+  const provided = params.token
+    || headers["x-bck-log-token"]
+    || headers["X-Bck-Log-Token"]
+    || "";
+
+  if (provided !== expected) {
+    return {
+      ok: false,
+      statusCode: 403,
+      error: "notification_log_forbidden",
+      message: "Token invalido para consultar logs."
+    };
+  }
+
+  return { ok: true };
+}
+
+function redactNotificationLog(record = {}) {
+  const history = Array.isArray(record.statusHistory) ? record.statusHistory : [];
+  const preview = redactPhonesInText(record.messagePreview || "");
+  return {
+    id: record.id || "",
+    type: record.type || "",
+    status: record.status || "",
+    createdAt: record.createdAt || "",
+    updatedAt: record.updatedAt || "",
+    to: maskPhone(record.to || record.recipientId || ""),
+    customerPhone: maskPhone(record.customerPhone || ""),
+    orderId: record.orderId || "",
+    metaMessageId: record.metaMessageId || "",
+    messageChars: record.messageChars || 0,
+    messagePreview: preview ? `${preview.slice(0, 120)}...` : "",
+    sendError: record.sendError || null,
+    statusHistory: history.map((entry) => ({
+      status: entry.status || "",
+      at: entry.at || "",
+      receivedAt: entry.receivedAt || "",
+      source: entry.source || "",
+      errors: Array.isArray(entry.errors) ? entry.errors.length : 0
+    }))
+  };
+}
+
+function redactPhonesInText(value = "") {
+  return String(value || "").replace(/\+?\d[\d\s().-]{7,}\d/g, (match) => {
+    const digits = onlyDigits(match);
+    return digits ? maskPhone(digits) : "********";
+  });
 }
 
 function buildPhaseOneOrderRecord({ customerPhone, data = emptyOrderData(), reason = "completed", sourceMessageId = "" } = {}) {
@@ -2304,6 +2675,13 @@ async function getBlobStore(name) {
       },
       async delete(key) {
         bucket.delete(key);
+      },
+      async list(options = {}) {
+        const prefix = options.prefix || "";
+        const blobs = [...bucket.keys()]
+          .filter((key) => !prefix || key.startsWith(prefix))
+          .map((key) => ({ key, etag: `test-${key}` }));
+        return { blobs };
       }
     };
   }
@@ -2749,9 +3127,12 @@ if (process.env.NODE_ENV === "test") {
   exports._test = {
     buildAutoReply,
     buildPhaseOneOrderRecord,
+    extractMessageStatuses,
     formatManualOrderNotification,
     isManualOrder,
     isOrderDraft,
-    isDraftCompletion
+    isDraftCompletion,
+    saveStoreNotificationLog,
+    saveStoreNotificationStatus
   };
 }
