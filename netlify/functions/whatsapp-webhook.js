@@ -17,6 +17,7 @@ const JSON_HEADERS = {
 const SITE_FALLBACK = "https://beerchicken-bck.netlify.app";
 const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
 const CITY = process.env.BCK_CITY || "Cachoeiro";
+const MAPS_CITY = process.env.BCK_MAPS_CITY || "Cachoeiro de Itapemirim - ES";
 const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
@@ -26,7 +27,9 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-v32-address-draft-v2";
+const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
+const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
+const BIBI_VERSION = "2026-06-16-v32-cep-maps-v3";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -131,7 +134,8 @@ exports.handler = async function handler(event) {
         aiInterpreterModel: AI_INTERPRETER_MODEL,
         aiInterpreterAccess: hasAIInterpreterAccess(),
         aiInterpreterSource: aiCredentialSource(),
-        aiInterpreterSdkLoaded: Boolean(OpenAIClient)
+        aiInterpreterSdkLoaded: Boolean(OpenAIClient),
+        cepLookupEnabled: CEP_LOOKUP_ENABLED
       });
     }
 
@@ -1443,6 +1447,7 @@ function formatHumanRequestNotification(customerPhone) {
 function formatManualOrderNotification(customerPhone, orderText, orderRecord = null, queueResult = null) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const warnings = orderRecord?.review?.warnings || [];
+  const mapLinks = orderMapLinks(orderText);
   const queueWarning = queueResult && !queueResult.ok
     ? ["Fila interna: nao salvou automaticamente. Conferir pela conversa da Bibi/Cloud API."]
     : [];
@@ -1460,6 +1465,9 @@ function formatManualOrderNotification(customerPhone, orderText, orderRecord = n
     "",
     formatCustomerOrderForTeam(orderText),
     "",
+    mapLinks.length ? "ROTAS:" : "",
+    ...mapLinks,
+    mapLinks.length ? "" : "",
     "ATENCAO:",
     "A Bibi nao confirmou preco, taxa, disponibilidade nem regra de promocao.",
     "Conferir tamanho, sabores, borda/adicionais, pagamento e troco antes de confirmar.",
@@ -2122,7 +2130,8 @@ const AI_ORDER_INTERPRETATION_SCHEMA = {
 };
 
 async function extractOrderFieldsSmart(rawText = "", current = emptyOrderData(), context = "order") {
-  const ruleExtraction = extractOrderFields(rawText);
+  let ruleExtraction = extractOrderFields(rawText);
+  ruleExtraction = await enrichAddressWithCep(rawText, current, ruleExtraction);
   if (!shouldUseAIInterpreter(rawText)) return ruleExtraction;
 
   const aiResult = await interpretOrderFieldsWithAI(rawText, current, ruleExtraction, context);
@@ -2134,7 +2143,8 @@ async function extractOrderFieldsSmart(rawText = "", current = emptyOrderData(),
     return ruleExtraction;
   }
 
-  const merged = mergeRuleAndAIOrderData(ruleExtraction, aiResult.data);
+  let merged = mergeRuleAndAIOrderData(ruleExtraction, aiResult.data);
+  merged = await enrichAddressWithCep(rawText, current, merged);
   console.log("BCK_BIBI_AI_INTERPRETER_USED", JSON.stringify({
     context,
     confidence: aiResult.confidence,
@@ -2384,6 +2394,148 @@ function shouldReplaceRuleItemWithAI(ruleItem = "", aiItems = []) {
   return hasCleanerAIItem || looksMixed;
 }
 
+async function enrichAddressWithCep(rawText = "", current = emptyOrderData(), incoming = emptyOrderData()) {
+  const cep = extractCep(rawText);
+  const weakAddress = isWeakNumberAddress(incoming.address);
+  if (!CEP_LOOKUP_ENABLED || !cep || (incoming.address && !weakAddress)) return incoming;
+
+  const cepAddress = await lookupCepAddress(cep);
+  if (!cepAddress?.street) return incoming;
+
+  const next = { ...incoming };
+  const number = extractHouseNumberForCep(rawText);
+  if (number) {
+    next.address = formatCepAddress(cepAddress, number);
+    next.addressDraft = "";
+  } else if (!next.addressDraft || isCepOnlyAddress(next.addressDraft)) {
+    next.addressDraft = formatCepAddressDraft(cepAddress);
+  }
+
+  if (next.addressDraft && normalize(current.addressDraft || "") === normalize(next.addressDraft)) {
+    return incoming;
+  }
+
+  return next;
+}
+
+function extractCep(value = "") {
+  const match = String(value || "").match(/(?:^|\D)(\d{5})-?(\d{3})(?:\D|$)/);
+  return match ? `${match[1]}${match[2]}` : "";
+}
+
+function isCepOnlyAddress(value = "") {
+  if (!extractCep(value)) return false;
+  const withoutCep = normalize(value)
+    .replace(/\bcep\b/g, "")
+    .replace(/\b\d{5}-?\d{3}\b/g, "")
+    .replace(/[^\w]+/g, "")
+    .trim();
+  return !withoutCep;
+}
+
+function isWeakNumberAddress(value = "") {
+  const text = normalize(value);
+  if (!text) return false;
+  return /^\d{1,6}[a-zA-Z]?$/.test(text)
+    || /^(?:numero|número|num|n|nº|casa)\s*[:º.\-]?\s*\d{1,6}[a-zA-Z]?$/.test(text);
+}
+
+async function lookupCepAddress(cep = "") {
+  const cleanCep = extractCep(cep) || onlyDigits(cep).slice(0, 8);
+  if (cleanCep.length !== 8) return null;
+
+  const viaCep = await fetchCepJson(`https://viacep.com.br/ws/${cleanCep}/json/`);
+  if (viaCep && !viaCep.erro) {
+    return normalizeCepAddress({
+      cep: viaCep.cep || cleanCep,
+      street: viaCep.logradouro,
+      neighborhood: viaCep.bairro,
+      city: viaCep.localidade,
+      state: viaCep.uf
+    });
+  }
+
+  const brasilApi = await fetchCepJson(`https://brasilapi.com.br/api/cep/v2/${cleanCep}`);
+  if (brasilApi && !brasilApi.errors) {
+    return normalizeCepAddress({
+      cep: brasilApi.cep || cleanCep,
+      street: brasilApi.street,
+      neighborhood: brasilApi.neighborhood,
+      city: brasilApi.city,
+      state: brasilApi.state
+    });
+  }
+
+  return null;
+}
+
+async function fetchCepJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CEP_LOOKUP_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    console.warn("BCK_BIBI_CEP_LOOKUP_SKIPPED", JSON.stringify({
+      message: error?.name === "AbortError" ? "timeout" : error?.message || String(error)
+    }));
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeCepAddress(value = {}) {
+  const address = {
+    cep: formatCep(value.cep || ""),
+    street: String(value.street || "").trim(),
+    neighborhood: String(value.neighborhood || "").trim(),
+    city: String(value.city || "").trim(),
+    state: String(value.state || "").trim().toUpperCase()
+  };
+
+  if (!address.street || !address.neighborhood) return null;
+  return address;
+}
+
+function formatCep(value = "") {
+  const digits = onlyDigits(value);
+  return digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
+
+function extractHouseNumberForCep(rawText = "") {
+  const explicit = String(rawText || "").match(/\b(?:numero|número|num|n|nº|casa)\s*[:º.\-]?\s*(\d{1,6}[a-zA-Z]?)\b/i);
+  if (explicit) return explicit[1];
+
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const numericLine = lines.find((line) => /^\d{1,6}[a-zA-Z]?$/.test(line));
+  return numericLine || "";
+}
+
+function formatCepAddress(address, number = "") {
+  const street = [address.street, number].filter(Boolean).join(", ");
+  return [
+    street,
+    address.neighborhood,
+    [address.city, address.state].filter(Boolean).join(" - "),
+    address.cep ? `CEP ${address.cep}` : ""
+  ].filter(Boolean).join(" - ");
+}
+
+function formatCepAddressDraft(address) {
+  return [
+    address.street,
+    address.neighborhood,
+    [address.city, address.state].filter(Boolean).join(" - "),
+    address.cep ? `CEP ${address.cep}` : ""
+  ].filter(Boolean).join(" - ");
+}
+
 function presentOrderFields(data = emptyOrderData()) {
   const order = normalizeOrderData(data);
   return {
@@ -2493,7 +2645,7 @@ function mergeOrderData(current = emptyOrderData(), incoming = emptyOrderData())
     next.addressDraft = "";
   }
   if (incoming.addressDraft && !next.address) {
-    const address = [next.addressDraft, incoming.addressDraft].filter(Boolean).join(" ");
+    const address = combineAddressDraft(next.addressDraft, incoming.addressDraft);
     if (isValidAddress(address)) {
       next.address = address;
       next.addressDraft = "";
@@ -2516,6 +2668,28 @@ function mergeOrderData(current = emptyOrderData(), incoming = emptyOrderData())
   }
 
   return next;
+}
+
+function combineAddressDraft(currentDraft = "", incomingDraft = "") {
+  const draft = String(currentDraft || "").trim();
+  const fragment = String(incomingDraft || "").trim();
+  if (!draft) return fragment;
+  if (!fragment) return draft;
+
+  if (isWeakNumberAddress(fragment)) {
+    const number = cleanHouseNumber(fragment);
+    const parts = draft.split(/\s+-\s+/);
+    if (parts.length > 1) {
+      return [[parts[0], number].filter(Boolean).join(", "), ...parts.slice(1)].join(" - ");
+    }
+  }
+
+  return [draft, fragment].filter(Boolean).join(" ");
+}
+
+function cleanHouseNumber(value = "") {
+  const match = String(value || "").match(/(\d{1,6}[a-zA-Z]?)/);
+  return match ? match[1] : String(value || "").trim();
 }
 
 function contextualizeIncomingOrderData(incoming = emptyOrderData(), current = emptyOrderData(), rawText = "") {
@@ -2591,7 +2765,8 @@ function isValidName(value) {
 function isValidAddress(value) {
   const text = String(value || "").trim();
   const normalizedText = normalize(text);
-  const hasNumber = /\b\d{1,6}\b/.test(normalizedText);
+  const textWithoutCep = normalizedText.replace(/\b\d{5}-?\d{3}\b/g, " ");
+  const hasNumber = /\b\d{1,6}\b/.test(textWithoutCep);
   const hasComplement = /[a-zA-ZÀ-ÿ]{3,}/.test(text)
     || hasAddressSignal(normalizedText);
   return hasNumber
@@ -2619,6 +2794,7 @@ function possibleAddressDraftFromLines(lines, extracted = emptyOrderData()) {
     const line = lines[index];
     const text = normalize(line);
     if (!text || text === name || hasFoodSignal(text) || isPaymentOrChangeLine(text) || isNonOrderMessage(text)) continue;
+    if (isCepOnlyAddress(line)) continue;
     if (/^\d{1,6}[a-zA-Z]?$/.test(text)) continue;
 
     const previous = normalize(lines[index - 1] || "");
@@ -2825,7 +3001,7 @@ function startCollectingReply(siteUrl, options = {}) {
       "Fechando rapidinho.",
       "",
       "Me mande em uma mensagem:",
-      "Nome, endereco, pedido e pagamento.",
+      "Nome, endereco, CEP se souber, pedido e pagamento.",
       "",
       "Eu organizo e envio para a equipe conferir."
     ].join("\n");
@@ -2839,6 +3015,7 @@ function startCollectingReply(siteUrl, options = {}) {
     "Para eu encaminhar certinho, me mande:",
     "Nome:",
     "Endereco completo:",
+    "CEP da rua, se souber:",
     "Bairro ou ponto de referencia:",
     "Pedido:",
     "Forma de pagamento:",
@@ -2951,7 +3128,17 @@ function askMissingFieldsReply(data, missing, options = {}) {
       "Anotei o endereco assim:",
       order.addressDraft,
       "",
-      "Falta so o numero da casa/comercio. Pode me mandar?"
+      "Falta so o numero da casa/comercio. Pode me mandar?",
+      "",
+      "Se souber o CEP da rua, pode mandar tambem que ajuda a conferir."
+    ].join("\n");
+  }
+
+  if (missing.length === 1 && missing[0] === "endereco") {
+    return [
+      "Beleza. Agora me passa o endereco completo, por favor.",
+      "",
+      "Se souber o CEP da rua, manda junto. Assim eu puxo rua e bairro certinho."
     ].join("\n");
   }
 
@@ -3758,6 +3945,35 @@ function formatCustomerOrderForTeam(orderText) {
     .join("\n\n");
 }
 
+function orderMapLinks(orderText = "") {
+  const address = extractAddressFromOrderSummary(orderText);
+  if (!address) return [];
+
+  const query = normalizeAddressForMap(address);
+  const encoded = encodeURIComponent(query);
+  return [
+    `Google Maps: https://www.google.com/maps/search/?api=1&query=${encoded}`,
+    `Waze: https://waze.com/ul?q=${encoded}&navigate=yes&utm_source=beerchicken-bck`
+  ];
+}
+
+function extractAddressFromOrderSummary(orderText = "") {
+  const line = String(orderText || "")
+    .split(/\r?\n/)
+    .find((item) => normalize(item).startsWith("endereco:"));
+  return line ? line.replace(/^endereco:\s*/i, "").trim() : "";
+}
+
+function normalizeAddressForMap(address = "") {
+  const text = String(address || "").trim();
+  if (!text) return "";
+  const normalizedText = normalize(text);
+  if (normalizedText.includes("cachoeiro") || normalizedText.includes(" espirito santo") || /\b-\s*es\b/i.test(text)) {
+    return text;
+  }
+  return `${text}, ${MAPS_CITY}`;
+}
+
 function isGreeting(text) {
   const exactGreetings = ["oi", "ola", "opa", "bom dia", "boa tarde", "boa noite", "e ai"];
   if (exactGreetings.includes(text)) return true;
@@ -3799,6 +4015,9 @@ if (process.env.NODE_ENV === "test") {
     contextualizeIncomingOrderData,
     mergeOrderData,
     orderCompleteness,
+    extractCep,
+    lookupCepAddress,
+    orderMapLinks,
     mergeRuleAndAIOrderData,
     sanitizeAIOrderData,
     isManualOrder,
