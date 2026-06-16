@@ -17,7 +17,9 @@ const SESSION_STORE = "bck-whatsapp-sessions";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
 const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
-const BIBI_VERSION = "2026-06-16-phase1-human-review-v4";
+const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
+const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
+const BIBI_VERSION = "2026-06-16-phase1b-ai-interpreter-v1";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -105,7 +107,9 @@ exports.handler = async function handler(event) {
       return json(200, {
         ok: true,
         version: BIBI_VERSION,
-        storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677")
+        storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677"),
+        aiInterpreterEnabled: AI_INTERPRETER_ENABLED,
+        aiInterpreterModel: AI_INTERPRETER_MODEL
       });
     }
 
@@ -353,6 +357,7 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
   if (text.startsWith("__unsupported__")) {
     return withSession(session, unsupportedMediaReply());
   }
+  const menuOrderStart = looksLikeOrderStart(text);
 
   if (isChoice(text, "1") || hasAny(text, ["cardapio", "cardápio", "promocao", "promocoes", "oferta", "ofertas"])) {
     return withSession(menuSession(), catalogReply(siteUrl, `${siteUrl}#catalogo`, `${siteUrl}#monte-seu-combo`));
@@ -364,11 +369,11 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
     return withSession(next, startCollectingReply(siteUrl));
   }
 
-  if (isChoice(text, "3") || hasAny(text, ["taxa", "entrega", "endereco", "bairro", "localizacao"])) {
+  if (isChoice(text, "3") || (!menuOrderStart && hasAny(text, ["taxa", "entrega", "endereco", "bairro", "localizacao"]))) {
     return withSession(menuSession(), deliveryReply(siteUrl));
   }
 
-  if (isChoice(text, "4") || hasAny(text, ["pagamento", "pix", "dinheiro", "cartao", "cartão", "maquininha"])) {
+  if (isChoice(text, "4") || (!menuOrderStart && hasAny(text, ["pagamento", "pix", "dinheiro", "cartao", "cartão", "maquininha"]))) {
     return withSession(menuSession(), paymentReply(siteUrl));
   }
 
@@ -398,8 +403,8 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
     return withSession(menuSession(), cameFromMiniSite(text) ? miniSiteMenuReply(siteUrl) : mainMenu(siteUrl));
   }
 
-  if (looksLikeOrderStart(text)) {
-    const data = mergeOrderData(emptyOrderData(), extractOrderFields(rawText));
+  if (menuOrderStart) {
+    const data = mergeOrderData(emptyOrderData(), await extractOrderFieldsSmart(rawText, emptyOrderData(), "menu_order"));
     const next = collectingSession(data, "partial_order_from_menu");
     const completeness = orderCompleteness(next.data);
     logStateChanged(message.from, session.state, next.state, "partial_order_from_menu");
@@ -472,7 +477,7 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
     return withSession(next, continueCollectingReply(next.data));
   }
 
-  const incoming = contextualizeIncomingOrderData(extractOrderFields(rawText), next.data, rawText);
+  const incoming = contextualizeIncomingOrderData(await extractOrderFieldsSmart(rawText, next.data, "collecting_order"), next.data, rawText);
   next.data = mergeOrderData(next.data, incoming);
   const completeness = orderCompleteness(next.data);
 
@@ -633,7 +638,7 @@ async function handleForwardedState({ message, session, rawText, text, siteUrl }
   }
 
   if (looksLikeOrderStart(text)) {
-    const data = mergeOrderData(emptyOrderData(), extractOrderFields(rawText));
+    const data = mergeOrderData(emptyOrderData(), await extractOrderFieldsSmart(rawText, emptyOrderData(), "handoff_order"));
     const next = collectingSession(data, "order_after_handoff");
     const completeness = orderCompleteness(next.data);
     logStateChanged(message.from, session.state, next.state, "order_after_handoff");
@@ -2027,6 +2032,257 @@ function normalizeOrderData(data = {}) {
   return order;
 }
 
+const AI_ORDER_INTERPRETATION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["intent", "name", "address", "items", "payment", "changeFor", "notes", "confidence", "warnings"],
+  properties: {
+    intent: {
+      type: "string",
+      enum: ["order", "question", "human_request", "noise"]
+    },
+    name: { type: "string" },
+    address: { type: "string" },
+    items: {
+      type: "array",
+      items: { type: "string" }
+    },
+    payment: {
+      type: "string",
+      enum: ["", "dinheiro", "pix", "cartao", "vale"]
+    },
+    changeFor: { type: "string" },
+    notes: { type: "string" },
+    confidence: {
+      type: "number",
+      minimum: 0,
+      maximum: 1
+    },
+    warnings: {
+      type: "array",
+      items: { type: "string" }
+    }
+  }
+};
+
+async function extractOrderFieldsSmart(rawText = "", current = emptyOrderData(), context = "order") {
+  const ruleExtraction = extractOrderFields(rawText);
+  if (!shouldUseAIInterpreter(rawText)) return ruleExtraction;
+
+  const aiResult = await interpretOrderFieldsWithAI(rawText, current, ruleExtraction, context);
+  if (!aiResult.ok) {
+    console.warn("BCK_BIBI_AI_INTERPRETER_SKIPPED", JSON.stringify({
+      reason: aiResult.error || "unknown",
+      context
+    }));
+    return ruleExtraction;
+  }
+
+  const merged = mergeRuleAndAIOrderData(ruleExtraction, aiResult.data);
+  console.log("BCK_BIBI_AI_INTERPRETER_USED", JSON.stringify({
+    context,
+    confidence: aiResult.confidence,
+    ruleFields: presentOrderFields(ruleExtraction),
+    aiFields: presentOrderFields(aiResult.data),
+    mergedFields: presentOrderFields(merged)
+  }));
+
+  return merged;
+}
+
+function shouldUseAIInterpreter(rawText = "") {
+  if (!AI_INTERPRETER_ENABLED) return false;
+  if (!hasAIInterpreterAccess()) return false;
+
+  const text = normalize(rawText);
+  if (!text || text.length < 8) return false;
+  if (text.startsWith("__unsupported__") || isNonOrderMessage(text)) return false;
+
+  return true;
+}
+
+function hasAIInterpreterAccess() {
+  return Boolean(process.env.OPENAI_API_KEY || process.env.OPENAI_BASE_URL);
+}
+
+async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData(), ruleExtraction = emptyOrderData(), context = "order") {
+  const baseUrl = aiBaseUrl();
+  if (!baseUrl) return { ok: false, error: "ai_credentials_missing" };
+
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  if (process.env.OPENAI_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.OPENAI_API_KEY}`;
+  }
+
+  const requestBody = {
+    model: AI_INTERPRETER_MODEL,
+    instructions: aiInterpreterInstructions(),
+    input: JSON.stringify({
+      context,
+      currentOrder: normalizeOrderData(current),
+      ruleExtraction: normalizeOrderData(ruleExtraction),
+      customerMessage: String(rawText || "").slice(0, 1200)
+    }),
+    text: {
+      format: {
+        type: "json_schema",
+        name: "bibi_order_interpretation",
+        strict: true,
+        schema: AI_ORDER_INTERPRETATION_SCHEMA
+      }
+    },
+    max_output_tokens: 600
+  };
+
+  try {
+    const response = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody)
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: "ai_response_failed",
+        status: response.status,
+        detail: body?.error?.message || body?.error || null
+      };
+    }
+
+    const text = openAIResponseText(body);
+    if (!text) return { ok: false, error: "ai_response_empty" };
+
+    const parsed = JSON.parse(text);
+    const data = sanitizeAIOrderData(parsed);
+    return {
+      ok: true,
+      data,
+      confidence: Number(parsed.confidence || 0)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error?.message || String(error)
+    };
+  }
+}
+
+function aiBaseUrl() {
+  if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL.replace(/\/$/, "");
+  if (process.env.OPENAI_API_KEY) return "https://api.openai.com/v1";
+  return "";
+}
+
+function aiInterpreterInstructions() {
+  return [
+    "Voce interpreta mensagens de WhatsApp da BCK Beer Chicken.",
+    "Extraia somente dados explicitamente presentes na mensagem do cliente.",
+    "Nao invente preco, taxa, disponibilidade, promocao, total, telefone ou confirmacao.",
+    "Seu trabalho e separar nome, endereco, itens, pagamento, troco e observacoes.",
+    "Se o cliente escrever 'troco', 'trico', 'troca' ou 'trocco' para/de/pra algum valor, isso e troco em dinheiro, nunca endereco.",
+    "Endereco deve ser endereco de entrega. Pedido deve conter comida ou bebida.",
+    "Use strings vazias quando nao houver informacao suficiente.",
+    "Responda somente no JSON estruturado solicitado."
+  ].join(" ");
+}
+
+function openAIResponseText(body = {}) {
+  if (typeof body.output_text === "string") return body.output_text;
+
+  const output = Array.isArray(body.output) ? body.output : [];
+  for (const item of output) {
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const part of content) {
+      if (typeof part.text === "string") return part.text;
+      if (typeof part.content === "string") return part.content;
+    }
+  }
+
+  return "";
+}
+
+function sanitizeAIOrderData(value = {}) {
+  const data = emptyOrderData();
+  const name = String(value.name || "").trim();
+  const address = String(value.address || "").trim();
+  const payment = parsePayment(normalize(value.payment || ""));
+  const changeFor = parseChangeAnswer(String(value.changeFor || ""), { allowNumericOnly: true })
+    || parseChangeAnswer(`troco ${value.changeFor || ""}`);
+
+  if (name && isValidName(name)) data.name = name;
+  if (address && isValidAddress(address)) data.address = address;
+
+  const items = Array.isArray(value.items) ? value.items : [];
+  data.items = uniqueList(items
+    .map((item) => String(item || "").trim())
+    .filter((item) => item.length >= 3)
+    .filter((item) => !isPaymentOrChangeLine(item))
+    .filter((item) => !isValidAddress(item))
+    .slice(0, 8));
+
+  if (payment) data.payment = payment;
+  if (changeFor) {
+    data.changeFor = changeFor;
+    if (!data.payment) data.payment = "dinheiro";
+  }
+
+  const notes = String(value.notes || "").trim();
+  if (notes && notes.length <= 240) data.notes = notes;
+
+  return normalizeOrderData(data);
+}
+
+function mergeRuleAndAIOrderData(ruleExtraction = emptyOrderData(), aiExtraction = emptyOrderData()) {
+  const rule = normalizeOrderData(ruleExtraction);
+  const ai = normalizeOrderData(aiExtraction);
+  const merged = normalizeOrderData(rule);
+
+  if (!merged.name && ai.name) merged.name = ai.name;
+  if (!merged.address && ai.address) merged.address = ai.address;
+  if (!merged.payment && ai.payment) merged.payment = ai.payment;
+  if (!merged.changeFor && ai.changeFor) merged.changeFor = ai.changeFor;
+  if (!merged.notes && ai.notes) merged.notes = ai.notes;
+
+  const ruleItems = ai.items.length
+    ? merged.items.filter((item) => !shouldReplaceRuleItemWithAI(item, ai.items))
+    : merged.items;
+  merged.items = uniqueList([...ruleItems, ...ai.items]);
+
+  return normalizeOrderData(merged);
+}
+
+function shouldReplaceRuleItemWithAI(ruleItem = "", aiItems = []) {
+  const text = normalize(ruleItem);
+  if (!text || !aiItems.length) return false;
+  if (text.length < 45) return false;
+
+  const hasCleanerAIItem = aiItems.some((item) => {
+    const aiText = normalize(item);
+    return aiText.length >= 8 && (text.includes(aiText) || aiText.includes(text));
+  });
+  const looksMixed = hasPaymentSignal(text)
+    || hasAddressSignal(text)
+    || hasAny(text, ["entrega", "entregar", "sou ", "meu nome", "troco", "troca", "pagamento"]);
+
+  return hasCleanerAIItem || looksMixed;
+}
+
+function presentOrderFields(data = emptyOrderData()) {
+  const order = normalizeOrderData(data);
+  return {
+    name: Boolean(order.name),
+    address: Boolean(order.address),
+    items: order.items.length,
+    payment: Boolean(order.payment),
+    changeFor: Boolean(order.changeFor),
+    notes: Boolean(order.notes)
+  };
+}
+
 function extractOrderFields(rawText = "") {
   const lines = String(rawText || "")
     .split(/\r?\n/)
@@ -3128,7 +3384,10 @@ if (process.env.NODE_ENV === "test") {
     buildAutoReply,
     buildPhaseOneOrderRecord,
     extractMessageStatuses,
+    extractOrderFieldsSmart,
     formatManualOrderNotification,
+    mergeRuleAndAIOrderData,
+    sanitizeAIOrderData,
     isManualOrder,
     isOrderDraft,
     isDraftCompletion,
