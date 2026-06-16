@@ -26,7 +26,7 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-v32-safe-v1";
+const BIBI_VERSION = "2026-06-16-v32-address-draft-v2";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -2473,6 +2473,11 @@ function extractOrderFields(rawText = "") {
     if (joinedAddress) extracted.address = joinedAddress;
   }
 
+  if (!extracted.address) {
+    const addressDraft = possibleAddressDraftFromLines(lines, extracted);
+    if (addressDraft) extracted.addressDraft = addressDraft;
+  }
+
   extracted.items = cleanOrderItems(extracted.items);
   return extracted;
 }
@@ -2604,6 +2609,29 @@ function possibleAddressFromLines(lines) {
     if (isValidAddress(joined)) return joined;
   }
   return "";
+}
+
+function possibleAddressDraftFromLines(lines, extracted = emptyOrderData()) {
+  const candidates = [];
+  const name = normalize(extracted.name || "");
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const text = normalize(line);
+    if (!text || text === name || hasFoodSignal(text) || isPaymentOrChangeLine(text) || isNonOrderMessage(text)) continue;
+    if (/^\d{1,6}[a-zA-Z]?$/.test(text)) continue;
+
+    const previous = normalize(lines[index - 1] || "");
+    const next = normalize(lines[index + 1] || "");
+    const hasAddressContext = hasAddressSignal(text) || hasAddressSignal(previous) || hasAddressSignal(next);
+
+    if (hasAddressContext && /[a-zA-ZÀ-ÿ]{3,}/.test(line)) {
+      candidates.push(line);
+    }
+  }
+
+  const draft = candidates.join(" ").trim();
+  return draft && !isSuspiciousAddress(draft) ? draft : "";
 }
 
 function isSuspiciousAddress(value = "") {
@@ -2905,16 +2933,27 @@ function chickenGuidanceReply() {
 }
 
 function askMissingFieldsReply(data, missing, options = {}) {
+  const order = normalizeOrderData(data);
+
   if (missing.includes("troco")) {
     return [
       "Anotei ate agora:",
-      formatOrderSummary(data),
+      formatOrderSummary(order),
       "",
       "Vai precisar de troco? Se sim, pra qual valor? Se nao, responda NAO."
     ].filter(Boolean).join("\n");
   }
 
   const labels = missingFieldLabels(missing);
+
+  if (missing.length === 1 && missing[0] === "endereco" && order.addressDraft) {
+    return [
+      "Anotei o endereco assim:",
+      order.addressDraft,
+      "",
+      "Falta so o numero da casa/comercio. Pode me mandar?"
+    ].join("\n");
+  }
 
   if (labels.length === 1) {
     if (options.mode === SERVICE_MODES.EXPRESS || isPeakServiceHour()) {
@@ -3757,6 +3796,9 @@ if (process.env.NODE_ENV === "test") {
     isGenericPizzaRequest,
     isGenericChickenRequest,
     isSellerModeRequest,
+    contextualizeIncomingOrderData,
+    mergeOrderData,
+    orderCompleteness,
     mergeRuleAndAIOrderData,
     sanitizeAIOrderData,
     isManualOrder,
