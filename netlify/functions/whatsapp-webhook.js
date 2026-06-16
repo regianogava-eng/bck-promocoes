@@ -26,7 +26,12 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-phase1b-clean-items-v4";
+const BIBI_VERSION = "2026-06-16-v32-safe-v1";
+const SERVICE_MODES = {
+  ATTENDANT: "atendente",
+  SELLER: "vendedora",
+  EXPRESS: "expresso"
+};
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -89,10 +94,17 @@ const FOOD_KEYWORDS = [
   "bebidas",
   "2l",
   "2 litros",
+  "familia",
+  "família",
+  "maracana",
+  "maracanã",
+  "pequena",
+  "portuguesa",
   "porcao",
   "porcoes",
   "carne",
   "file",
+  "polenta",
   "catupiry",
   "cheddar",
   "bacon",
@@ -293,7 +305,9 @@ async function handleBibiMessage(message) {
   console.log("BCK_BIBI_MESSAGE_RECEIVED", JSON.stringify({
     phone: maskPhone(message.from),
     state: session.state,
-    chars: rawText.length
+    chars: rawText.length,
+    mode: classifyServiceMode(text, session),
+    peak: isPeakServiceHour()
   }));
 
   session = expireSessionIfNeeded(session);
@@ -368,6 +382,25 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
     return withSession(session, unsupportedMediaReply());
   }
   const menuOrderStart = looksLikeOrderStart(text);
+  const serviceMode = classifyServiceMode(text, session);
+
+  if (serviceMode === SERVICE_MODES.SELLER) {
+    const next = collectingSession(emptyOrderData(), "seller_guidance");
+    logStateChanged(message.from, session.state, next.state, "seller_guidance");
+    return withSession(next, sellerGuidanceReply(siteUrl, text));
+  }
+
+  if (isGenericPizzaRequest(text)) {
+    const next = collectingSession(emptyOrderData(), "pizza_guidance");
+    logStateChanged(message.from, session.state, next.state, "pizza_guidance");
+    return withSession(next, pizzaGuidanceReply());
+  }
+
+  if (isGenericChickenRequest(text)) {
+    const next = collectingSession(emptyOrderData(), "chicken_guidance");
+    logStateChanged(message.from, session.state, next.state, "chicken_guidance");
+    return withSession(next, chickenGuidanceReply());
+  }
 
   if (isChoice(text, "1") || hasAny(text, ["cardapio", "cardápio", "promocao", "promocoes", "oferta", "ofertas"])) {
     return withSession(menuSession(), catalogReply(siteUrl, `${siteUrl}#catalogo`, `${siteUrl}#monte-seu-combo`));
@@ -376,7 +409,7 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
   if (isChoice(text, "2") || isOrderStartRequest(text)) {
     const next = collectingSession(emptyOrderData(), "start_order");
     logStateChanged(message.from, session.state, next.state, "start_order");
-    return withSession(next, startCollectingReply(siteUrl));
+    return withSession(next, startCollectingReply(siteUrl, { mode: serviceMode }));
   }
 
   if (isChoice(text, "3") || (!menuOrderStart && hasAny(text, ["taxa", "entrega", "endereco", "bairro", "localizacao"]))) {
@@ -423,7 +456,7 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
       return forwardCompletedOrder(message, next, "complete_from_menu");
     }
 
-    return withSession(next, askMissingFieldsReply(next.data, completeness.missing));
+    return withSession(next, askMissingFieldsReply(next.data, completeness.missing, { mode: serviceMode }));
   }
 
   return withSession(menuSession(), mainMenu(siteUrl));
@@ -431,6 +464,7 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
 
 async function handleCollectingState({ message, session, rawText, text, siteUrl }) {
   const data = session.data || emptyOrderData();
+  const serviceMode = classifyServiceMode(text, session);
 
   if (session.expiredNotice) {
     const menuResult = await handleMenuState({ message, session: menuSession(), rawText, text, siteUrl });
@@ -458,6 +492,18 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
     return withSession(next, currentOrderStatusReply(next.data));
   }
 
+  if (!next.data.items.length && serviceMode === SERVICE_MODES.SELLER) {
+    return withSession(next, sellerGuidanceReply(siteUrl, text));
+  }
+
+  if (!next.data.items.length && isGenericPizzaRequest(text)) {
+    return withSession(next, pizzaGuidanceReply());
+  }
+
+  if (!next.data.items.length && isGenericChickenRequest(text)) {
+    return withSession(next, chickenGuidanceReply());
+  }
+
   if (isOnlyMissingChange(pendingBefore) && shouldAnswerChange(text)) {
     next.data = {
       ...next.data,
@@ -480,7 +526,7 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
   }
 
   if (isOnlyMissingChange(pendingBefore)) {
-    return withSession(next, askMissingFieldsReply(next.data, ["troco"]));
+    return withSession(next, askMissingFieldsReply(next.data, ["troco"], { mode: serviceMode }));
   }
 
   if (isNonOrderMessage(text)) {
@@ -495,7 +541,7 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
     return forwardCompletedOrder(message, next, "all_fields_collected");
   }
 
-  return withSession(next, askMissingFieldsReply(next.data, completeness.missing));
+  return withSession(next, askMissingFieldsReply(next.data, completeness.missing, { mode: serviceMode }));
 }
 
 async function handleConfirmingState({ message, session, rawText, text, siteUrl }) {
@@ -644,7 +690,7 @@ async function handleForwardedState({ message, session, rawText, text, siteUrl }
   if (isChoice(text, "2") || isOrderStartRequest(text)) {
     const next = collectingSession(emptyOrderData(), "start_order_after_handoff");
     logStateChanged(message.from, session.state, next.state, "start_order_after_handoff");
-    return withSession(next, startCollectingReply(siteUrl));
+    return withSession(next, startCollectingReply(siteUrl, { mode: classifyServiceMode(text, session) }));
   }
 
   if (looksLikeOrderStart(text)) {
@@ -657,7 +703,7 @@ async function handleForwardedState({ message, session, rawText, text, siteUrl }
       return forwardCompletedOrder(message, next, "complete_after_handoff");
     }
 
-    return withSession(next, askMissingFieldsReply(next.data, completeness.missing));
+    return withSession(next, askMissingFieldsReply(next.data, completeness.missing, { mode: classifyServiceMode(text, session) }));
   }
 
   return {
@@ -2239,9 +2285,13 @@ function aiCredentialSource() {
 function aiInterpreterInstructions() {
   return [
     "Voce interpreta mensagens de WhatsApp da BCK Beer Chicken.",
+    "A Bibi esta na fase segura: ela ajuda a vender, mas nao confirma pedido sozinha.",
+    "Prioridade maxima: concluir o pedido sem atrapalhar cliente decidido.",
     "Extraia somente dados explicitamente presentes na mensagem do cliente.",
-    "Nao invente preco, taxa, disponibilidade, promocao, total, telefone ou confirmacao.",
+    "Nao invente preco, taxa, disponibilidade, promocao, brinde, prazo, total, telefone ou confirmacao.",
     "Seu trabalho e separar nome, endereco, itens, pagamento, troco e observacoes.",
+    "Se o cliente ja mandou pedido claro, preserve os itens e nao crie sugestoes adicionais.",
+    "Se o cliente estiver indeciso, ainda assim extraia apenas o que ele escreveu; sugestoes ficam fora do JSON.",
     "Se o cliente escrever 'troco', 'trico', 'troca' ou 'trocco' para/de/pra algum valor, isso e troco em dinheiro, nunca endereco.",
     "Endereco deve ser endereco de entrega. Pedido deve conter comida ou bebida.",
     "Itens devem conter apenas comida, bebida, tamanho, sabor e adicionais.",
@@ -2741,7 +2791,18 @@ function paymentLabel(payment) {
   }[payment] || payment;
 }
 
-function startCollectingReply(siteUrl) {
+function startCollectingReply(siteUrl, options = {}) {
+  if (isPeakServiceHour() || options.mode === SERVICE_MODES.EXPRESS) {
+    return [
+      "Fechando rapidinho.",
+      "",
+      "Me mande em uma mensagem:",
+      "Nome, endereco, pedido e pagamento.",
+      "",
+      "Eu organizo e envio para a equipe conferir."
+    ].join("\n");
+  }
+
   return [
     "Claro. Pode fazer seu pedido comigo por aqui.",
     "",
@@ -2761,7 +2822,89 @@ function startCollectingReply(siteUrl) {
   ].join("\n");
 }
 
-function askMissingFieldsReply(data, missing) {
+function sellerGuidanceReply(siteUrl, text = "") {
+  if (isPeakServiceHour()) {
+    return [
+      "Te ajudo sim.",
+      "",
+      "Para agilizar, escolha uma linha:",
+      "1 - Pizza",
+      "2 - Frango",
+      "3 - Combo",
+      "",
+      "Se ja souber, mande direto: nome, endereco, pedido e pagamento."
+    ].join("\n");
+  }
+
+  if (hasAny(text, ["promo", "promocao", "promocoes", "oferta", "ofertas", "barato", "desconto"])) {
+    return [
+      "Posso te mostrar as opcoes do cardapio sem inventar valor.",
+      "",
+      "Sugestoes da casa:",
+      "- Pizza + Borda + Refri",
+      "- Frango + Batata + Bebida",
+      "- Batata Recheada + Refri",
+      "",
+      "Quer pizza, frango ou combo?"
+    ].join("\n");
+  }
+
+  return [
+    "Posso te ajudar a escolher.",
+    "",
+    "Sugestoes da casa:",
+    "- Pizza + Borda + Refri",
+    "- Frango + Batata + Bebida",
+    "- Pizza pequena com borda",
+    "",
+    "Voce prefere pizza ou frango?",
+    "",
+    "Cardapio:",
+    siteUrl
+  ].join("\n");
+}
+
+function pizzaGuidanceReply() {
+  if (isPeakServiceHour()) {
+    return [
+      "Perfeito. Vamos agilizar a pizza.",
+      "",
+      "Me mande tamanho + sabor.",
+      "Exemplo: Familia frango com catupiry.",
+      "",
+      "Depois eu pego endereco e pagamento."
+    ].join("\n");
+  }
+
+  return [
+    "Otima escolha.",
+    "",
+    "Voce prefere Familia ou Maracana?",
+    "Depois me diga o sabor.",
+    "",
+    "Se quiser, pode incluir borda recheada junto."
+  ].join("\n");
+}
+
+function chickenGuidanceReply() {
+  if (isPeakServiceHour()) {
+    return [
+      "Boa. Para agilizar o frango, me mande a quantidade ou o combo que voce quer.",
+      "",
+      "Se ja souber, mande junto nome, endereco e pagamento."
+    ].join("\n");
+  }
+
+  return [
+    "Boa escolha.",
+    "",
+    "Voce quer frango sozinho ou combo com batata e bebida?",
+    "",
+    "A equipe confere valor e disponibilidade antes de confirmar."
+  ].join("\n");
+}
+
+function askMissingFieldsReply(data, missing, options = {}) {
   if (missing.includes("troco")) {
     return [
       "Anotei ate agora:",
@@ -2774,7 +2917,14 @@ function askMissingFieldsReply(data, missing) {
   const labels = missingFieldLabels(missing);
 
   if (labels.length === 1) {
+    if (options.mode === SERVICE_MODES.EXPRESS || isPeakServiceHour()) {
+      return `Falta so ${labels[0]}. Pode me mandar?`;
+    }
     return `Beleza. Agora me passa seu ${labels[0]}, por favor.`;
+  }
+
+  if (options.mode === SERVICE_MODES.EXPRESS || isPeakServiceHour()) {
+    return `Falta ${joinHuman(labels)}. Pode mandar em uma mensagem?`;
   }
 
   return `So falta ${joinHuman(labels)}. Pode me mandar por aqui?`;
@@ -3088,6 +3238,24 @@ function currentGreeting() {
   }
 }
 
+function currentSaoPauloHour() {
+  try {
+    const hourText = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      hour12: false
+    }).format(new Date());
+    return Number(hourText.replace(/\D/g, ""));
+  } catch {
+    return new Date().getHours();
+  }
+}
+
+function isPeakServiceHour() {
+  const hour = currentSaoPauloHour();
+  return hour >= 18 && hour < 21;
+}
+
 function hasAny(text, words) {
   return words.some((word) => text.includes(normalize(word)));
 }
@@ -3111,6 +3279,103 @@ function isAssistantRequest(text) {
       "bibi",
       "bot"
     ]);
+}
+
+function classifyServiceMode(text, session = menuSession()) {
+  if (isExpressReply(text)) return SERVICE_MODES.EXPRESS;
+  if (isSellerModeRequest(text)) return SERVICE_MODES.SELLER;
+
+  const signals = orderSignals(text);
+  if (signals.hasFood || signals.hasPayment || signals.hasOrderVerb || isOrderStartRequest(text)) {
+    return SERVICE_MODES.ATTENDANT;
+  }
+
+  if (session.state === STATES.COLLECTING && text.split(/\s+/).filter(Boolean).length <= 2) {
+    return SERVICE_MODES.EXPRESS;
+  }
+
+  return SERVICE_MODES.ATTENDANT;
+}
+
+function isExpressReply(text) {
+  return [
+    "sim",
+    "nao",
+    "não",
+    "ok",
+    "pix",
+    "cartao",
+    "cartão",
+    "dinheiro",
+    "manda",
+    "manda sim",
+    "pode mandar",
+    "fechado",
+    "fechou",
+    "confirmado",
+    "isso",
+    "certo"
+  ].some((answer) => text === normalize(answer));
+}
+
+function isSellerModeRequest(text) {
+  if (isGenericPizzaRequest(text) || isGenericChickenRequest(text)) return false;
+
+  return hasAny(text, [
+    "nao sei",
+    "não sei",
+    "me indica",
+    "me indique",
+    "indica uma",
+    "indique uma",
+    "sugere",
+    "sugestao",
+    "sugestão",
+    "o que tem",
+    "qual melhor",
+    "qual e melhor",
+    "qual é melhor",
+    "qual voce recomenda",
+    "qual vc recomenda",
+    "ajuda escolher",
+    "me ajuda escolher",
+    "quero ajuda para escolher",
+    "tanto faz",
+    "qualquer uma",
+    "mais pedido",
+    "mais pedidos",
+    "barato",
+    "desconto",
+    "promo",
+    "promocao",
+    "promoção",
+    "oferta"
+  ]);
+}
+
+function isGenericPizzaRequest(text) {
+  return [
+    "pizza",
+    "pizzas",
+    "quero pizza",
+    "queria pizza",
+    "vou querer pizza",
+    "manda pizza",
+    "me ve pizza",
+    "me vê pizza"
+  ].some((value) => text === normalize(value));
+}
+
+function isGenericChickenRequest(text) {
+  return [
+    "frango",
+    "quero frango",
+    "queria frango",
+    "vou querer frango",
+    "manda frango",
+    "frango frito",
+    "frango crocante"
+  ].some((value) => text === normalize(value));
 }
 
 function isMenuRequest(text) {
@@ -3488,6 +3753,10 @@ if (process.env.NODE_ENV === "test") {
     extractMessageStatuses,
     extractOrderFieldsSmart,
     formatManualOrderNotification,
+    classifyServiceMode,
+    isGenericPizzaRequest,
+    isGenericChickenRequest,
+    isSellerModeRequest,
     mergeRuleAndAIOrderData,
     sanitizeAIOrderData,
     isManualOrder,
