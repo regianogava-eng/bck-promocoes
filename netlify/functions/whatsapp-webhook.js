@@ -26,7 +26,7 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-phase1b-openai-sdk-v3";
+const BIBI_VERSION = "2026-06-16-phase1b-clean-items-v4";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -2020,7 +2020,7 @@ function normalizeOrderData(data = {}) {
     payment: String(data.payment || ""),
     changeFor: String(data.changeFor || ""),
     notes: String(data.notes || ""),
-    items: Array.isArray(data.items) ? data.items.filter(Boolean).map(String) : []
+    items: cleanOrderItems(Array.isArray(data.items) ? data.items.filter(Boolean).map(String) : [])
   };
 
   if (isSuspiciousAddress(order.address)) {
@@ -2244,6 +2244,9 @@ function aiInterpreterInstructions() {
     "Seu trabalho e separar nome, endereco, itens, pagamento, troco e observacoes.",
     "Se o cliente escrever 'troco', 'trico', 'troca' ou 'trocco' para/de/pra algum valor, isso e troco em dinheiro, nunca endereco.",
     "Endereco deve ser endereco de entrega. Pedido deve conter comida ou bebida.",
+    "Itens devem conter apenas comida, bebida, tamanho, sabor e adicionais.",
+    "Nunca coloque endereco, bairro, entrega, pagamento, troco ou nome dentro de itens.",
+    "Se uma frase misturar pedido com entrega e troco, corte o item antes de entrega/endereco/troco/pagamento.",
     "Use strings vazias quando nao houver informacao suficiente.",
     "Responda somente no JSON estruturado solicitado."
   ].join(" ");
@@ -2278,6 +2281,7 @@ function sanitizeAIOrderData(value = {}) {
   const items = Array.isArray(value.items) ? value.items : [];
   data.items = uniqueList(items
     .map((item) => String(item || "").trim())
+    .map(cleanOrderItem)
     .filter((item) => item.length >= 3)
     .filter((item) => !isPaymentOrChangeLine(item))
     .filter((item) => !isValidAddress(item))
@@ -2309,7 +2313,7 @@ function mergeRuleAndAIOrderData(ruleExtraction = emptyOrderData(), aiExtraction
   const ruleItems = ai.items.length
     ? merged.items.filter((item) => !shouldReplaceRuleItemWithAI(item, ai.items))
     : merged.items;
-  merged.items = uniqueList([...ruleItems, ...ai.items]);
+  merged.items = cleanOrderItems([...ruleItems, ...ai.items]);
 
   return normalizeOrderData(merged);
 }
@@ -2419,7 +2423,7 @@ function extractOrderFields(rawText = "") {
     if (joinedAddress) extracted.address = joinedAddress;
   }
 
-  extracted.items = uniqueList(extracted.items);
+  extracted.items = cleanOrderItems(extracted.items);
   return extracted;
 }
 
@@ -2447,7 +2451,7 @@ function mergeOrderData(current = emptyOrderData(), incoming = emptyOrderData())
   if (incoming.notes) next.notes = incoming.notes;
 
   if (incoming.items?.length) {
-    next.items = uniqueList([...next.items, ...incoming.items]);
+    next.items = cleanOrderItems([...next.items, ...incoming.items]);
   }
 
   if (next.payment !== "dinheiro") {
@@ -2599,6 +2603,45 @@ function hasFoodSignal(text) {
 
 function hasPaymentSignal(text) {
   return Boolean(parsePayment(text)) || hasAny(text, CHANGE_KEYWORDS);
+}
+
+function cleanOrderItems(items = []) {
+  return uniqueList(items
+    .map(cleanOrderItem)
+    .filter((item) => item.length >= 3)
+    .filter((item) => hasFoodSignal(normalize(item)))
+    .filter((item) => !isPaymentOrChangeLine(item))
+    .filter((item) => !isValidAddress(item)));
+}
+
+function cleanOrderItem(item = "") {
+  let value = String(item || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!value) return "";
+
+  value = value.replace(/^(?:eu\s+)?(?:quero|queria|vou querer|pode mandar|me ve|manda|pedido)\s+/i, "");
+
+  const lower = normalize(value);
+  const cutPatterns = [
+    /\b(?:entrega|entregar|endereco|endereço|bairro|rua|avenida|av\.?|forma de pagamento|pagamento|pagar|troco|trico|troca|trocco)\b/i,
+    /\b(?:para|pra)\s*(?:r\$?\s*)?\d{1,4}(?:[,.]\d{1,2})?\b/i
+  ];
+
+  let cutIndex = -1;
+  for (const pattern of cutPatterns) {
+    const match = value.match(pattern);
+    if (match && hasFoodSignal(lower.slice(0, match.index))) {
+      cutIndex = cutIndex === -1 ? match.index : Math.min(cutIndex, match.index);
+    }
+  }
+
+  if (cutIndex > 0) value = value.slice(0, cutIndex).trim();
+
+  return value
+    .replace(/[,.:-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parsePayment(text) {
