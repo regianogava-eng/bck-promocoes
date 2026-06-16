@@ -16,7 +16,7 @@ const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "
 const SESSION_STORE = "bck-whatsapp-sessions";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
-const BIBI_VERSION = "2026-06-16-phase1-human-review-v1";
+const BIBI_VERSION = "2026-06-16-phase1-human-review-v2";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -50,6 +50,12 @@ const RESET_KEYWORDS = [
   "voltar"
 ].map(normalize);
 const UNSUPPORTED_MEDIA_REPLY = "Desculpa, ainda nao consigo ver imagens, videos ou audios. Voce pode escrever seu pedido?";
+const CHANGE_KEYWORDS = [
+  "troco",
+  "trico",
+  "troca",
+  "trocco"
+].map(normalize);
 const FOOD_KEYWORDS = [
   "pizza",
   "pizz",
@@ -1677,7 +1683,7 @@ function extractOrderFields(rawText = "") {
   const explicitPayment = explicitField(rawText, ["pagamento", "forma de pagamento"]);
   if (explicitPayment) extracted.payment = parsePayment(normalize(explicitPayment));
 
-  const explicitChange = explicitField(rawText, ["troco", "troco para", "troco pra"]);
+  const explicitChange = explicitField(rawText, ["troco", "troco para", "troco pra", "troca", "troca para", "troca pra"]);
   if (explicitChange) {
     extracted.changeFor = parseChangeAnswer(`troco ${explicitChange}`)
       || parseChangeAnswer(explicitChange, { allowNumericOnly: true });
@@ -1865,7 +1871,7 @@ function isSuspiciousAddress(value = "") {
   if (!text) return false;
   return hasPaymentSignal(text)
     || Boolean(parseChangeAnswer(text))
-    || hasAny(text, ["troco", "trico", "pix", "dinheiro", "cartao", "maquininha", "debito", "credito"]);
+    || hasAny(text, [...CHANGE_KEYWORDS, "pix", "dinheiro", "cartao", "maquininha", "debito", "credito"]);
 }
 
 function isPaymentOrChangeLine(value = "") {
@@ -1906,11 +1912,11 @@ function hasFoodSignal(text) {
 }
 
 function hasPaymentSignal(text) {
-  return Boolean(parsePayment(text)) || hasAny(text, ["troco"]);
+  return Boolean(parsePayment(text)) || hasAny(text, CHANGE_KEYWORDS);
 }
 
 function parsePayment(text) {
-  if (hasAny(text, ["dinheiro", "troco"])) return "dinheiro";
+  if (hasAny(text, ["dinheiro", ...CHANGE_KEYWORDS])) return "dinheiro";
   if (hasAny(text, ["pix"])) return "pix";
   if (hasAny(text, ["cartao", "cartão", "maquininha", "debito", "débito", "credito", "crédito"])) return "cartao";
   if (hasAny(text, ["vale"])) return "vale";
@@ -1923,7 +1929,7 @@ function parseChangeAnswer(text, options = {}) {
     || hasAny(normalizedText, ["sem troco", "nao precisa", "dispensa troco", "nao vou precisar de troco"])) {
     return "nao";
   }
-  const directChange = normalizedText.match(/\b(?:troco|trico)\s*(?:para|pra|de|em)?\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
+  const directChange = normalizedText.match(/\b(?:troco|trico|troca|trocco)\s*(?:para|pra|de|em)?\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
   if (directChange) return directChange[1].replace(",", ".");
 
   const shortChange = normalizedText.match(/^(?:para|pra)\s*(?:r\$?\s*)?(\d{1,4}(?:[,.]\d{1,2})?)\b/);
@@ -2404,6 +2410,9 @@ function orderSignals(text) {
     "dinheiro",
     "cartao",
     "troco",
+    "trico",
+    "troca",
+    "trocco",
     "maquininha",
     "pagamento",
     "debito",
@@ -2432,7 +2441,7 @@ function orderSignals(text) {
       "500g",
       "500 gramas"
     ])
-    && !(numericParts.length === 1 && hasAny(text, ["troco", "reais", "real"]));
+    && !(numericParts.length === 1 && hasAny(text, [...CHANGE_KEYWORDS, "reais", "real"]));
   const hasAddress = hasAddressKeyword || hasAddressNumber;
 
   return {
