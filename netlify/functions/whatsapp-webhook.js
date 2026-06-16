@@ -14,7 +14,9 @@ const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
-const BIBI_VERSION = "2026-06-15-audited-extractor-v4";
+const BIBI_ORDERS_STORE = "bck-bibi-orders";
+const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
+const BIBI_VERSION = "2026-06-16-phase1-human-review-v1";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -458,36 +460,7 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
   }
 
   if (isPositiveConfirmation(text)) {
-    const summary = formatOrderSummary(session.data);
-    const storeNotification = await notifyStoreManualOrder(message.from, summary);
-    if (!storeNotification.ok) {
-      console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
-        customer: maskPhone(message.from),
-        error: storeNotification.error,
-        status: storeNotification.status || null,
-        detail: storeNotification.detail || null
-      }));
-    } else {
-      console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
-        customer: maskPhone(message.from),
-        chars: summary.length
-      }));
-    }
-
-    const next = forwardedSession(session.data, "confirmed");
-    logStateChanged(message.from, session.state, next.state, "confirmed");
-    if (!storeNotification.ok) {
-      return withSession(next, [
-        "Recebi seu pedido, mas nao consegui avisar a equipe automaticamente agora.",
-        "",
-        "Resumo do pedido:",
-        summary,
-        "",
-        "Por favor, chame a equipe no numero oficial: https://wa.me/5528999329677"
-      ].join("\n"));
-    }
-
-    return withSession(next, "Ja encaminhei pra equipe! Eles vao confirmar por aqui em breve.");
+    return forwardCompletedOrder(message, session, "confirmed");
   }
 
   if (isChangeRequest(text)) {
@@ -510,10 +483,33 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
 
 async function forwardCompletedOrder(message, session, reason) {
   const summary = formatOrderSummary(session.data);
-  const storeNotification = await notifyStoreManualOrder(message.from, summary);
+  const orderRecord = buildPhaseOneOrderRecord({
+    customerPhone: message.from,
+    data: session.data,
+    reason,
+    sourceMessageId: message.id
+  });
+  const queueResult = await savePhaseOneOrder(orderRecord);
+
+  if (!queueResult.ok) {
+    console.error("BCK_BIBI_ORDER_QUEUE_FAILED", JSON.stringify({
+      customer: maskPhone(message.from),
+      orderId: orderRecord.id,
+      error: queueResult.error
+    }));
+  } else {
+    console.log("BCK_BIBI_ORDER_QUEUED", JSON.stringify({
+      customer: maskPhone(message.from),
+      orderId: orderRecord.id,
+      status: orderRecord.status
+    }));
+  }
+
+  const storeNotification = await notifyStoreManualOrder(message.from, summary, orderRecord, queueResult);
   if (!storeNotification.ok) {
     console.error("BCK_BIBI_STORE_NOTIFY_FAILED", JSON.stringify({
       customer: maskPhone(message.from),
+      orderId: orderRecord.id,
       error: storeNotification.error,
       status: storeNotification.status || null,
       detail: storeNotification.detail || null
@@ -521,6 +517,7 @@ async function forwardCompletedOrder(message, session, reason) {
   } else {
     console.log("BCK_BIBI_STORE_NOTIFY_SENT", JSON.stringify({
       customer: maskPhone(message.from),
+      orderId: orderRecord.id,
       chars: summary.length
     }));
   }
@@ -530,7 +527,10 @@ async function forwardCompletedOrder(message, session, reason) {
 
   if (!storeNotification.ok) {
     return withSession(next, [
-      "Recebi seu pedido, mas nao consegui avisar a equipe automaticamente agora.",
+      "Recebi seu pedido e montei o resumo para conferencia.",
+      `Protocolo: ${orderRecord.id}`,
+      "",
+      "Mas nao consegui avisar a equipe automaticamente agora.",
       "",
       "Resumo do pedido:",
       summary,
@@ -540,11 +540,12 @@ async function forwardCompletedOrder(message, session, reason) {
   }
 
   return withSession(next, [
-    "Certo, recebi e ja encaminhei seu pedido para a equipe responsavel:",
+    "Certo, recebi e encaminhei seu pedido para a equipe conferir antes de confirmar.",
+    `Protocolo: ${orderRecord.id}`,
     "",
     summary,
     "",
-    "Eles vao conferir tudo e te responder por aqui com a confirmacao."
+    "Eles vao conferir valores, disponibilidade e detalhes do pedido, depois te respondem por aqui com a confirmacao."
   ].join("\n"));
 }
 
@@ -1258,13 +1259,13 @@ function safeJsonDetail(detail) {
   }
 }
 
-async function notifyStoreManualOrder(customerPhone, orderText) {
+async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = null, queueResult = null) {
   const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
 
-  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText));
+  return sendTextMessage(to, formatManualOrderNotification(customerPhone, orderText, orderRecord, queueResult));
 }
 
 async function notifyStoreHumanRequest(customerPhone) {
@@ -1299,21 +1300,170 @@ function formatHumanRequestNotification(customerPhone) {
   ].join("\n");
 }
 
-function formatManualOrderNotification(customerPhone, orderText) {
+function formatManualOrderNotification(customerPhone, orderText, orderRecord = null, queueResult = null) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const warnings = orderRecord?.review?.warnings || [];
+  const queueWarning = queueResult && !queueResult.ok
+    ? ["Fila interna: nao salvou automaticamente. Conferir pela conversa da Bibi/Cloud API."]
+    : [];
 
   return [
-    "NOVO PEDIDO VIA BIBI",
+    "NOVO PEDIDO BIBI - CONFERIR",
+    "",
+    orderRecord?.id ? `Protocolo: ${orderRecord.id}` : "",
+    `Status: ${orderRecord?.status || BIBI_PENDING_ORDER_STATUS}`,
     "",
     `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
     `Recebido: ${receivedAt}`,
     "",
-    "Pedido enviado pelo cliente:",
+    "PEDIDO MONTADO PELA BIBI:",
     "",
     formatCustomerOrderForTeam(orderText),
     "",
+    "ATENCAO:",
+    "A Bibi nao confirmou preco, taxa, disponibilidade nem regra de promocao.",
+    "Conferir tamanho, sabores, borda/adicionais, pagamento e troco antes de confirmar.",
+    "",
+    warnings.length ? "PONTOS PARA CONFERIR:" : "",
+    ...warnings.map((warning) => `- ${warning}`),
+    ...queueWarning,
+    "",
     "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar."
-  ].join("\n");
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
+}
+
+function buildPhaseOneOrderRecord({ customerPhone, data = emptyOrderData(), reason = "completed", sourceMessageId = "" } = {}) {
+  const order = normalizeOrderData(data);
+  const now = new Date().toISOString();
+  const items = order.items.map((item, index) => buildPhaseOneItem(item, index));
+  const record = {
+    id: createBibiOrderId(now),
+    source: "bibi-whatsapp",
+    phase: "fase_1_human_review",
+    status: BIBI_PENDING_ORDER_STATUS,
+    createdAt: now,
+    updatedAt: now,
+    reason,
+    customer: {
+      phone: onlyDigits(customerPhone),
+      name: order.name || ""
+    },
+    delivery: {
+      address: order.address || "",
+      reference: ""
+    },
+    items,
+    payment: {
+      method: order.payment || "",
+      label: order.payment ? paymentLabel(order.payment) : "",
+      changeFor: order.payment === "dinheiro" ? order.changeFor || "" : ""
+    },
+    notes: order.notes || "",
+    pricing: {
+      calculatedByBibi: false,
+      total: null,
+      currency: "BRL",
+      note: "Preco, taxa e promocao devem ser conferidos por humano antes da confirmacao."
+    },
+    review: {
+      required: true,
+      owner: "equipe_bck",
+      warnings: phaseOneWarnings(order)
+    },
+    rawSummary: formatOrderSummary(order),
+    sourceMessageId: sourceMessageId || ""
+  };
+
+  return record;
+}
+
+function buildPhaseOneItem(item, index) {
+  const raw = String(item || "").trim();
+  const hasQuantity = itemHasQuantity(raw);
+  return {
+    id: `item-${index + 1}`,
+    raw,
+    summary: hasQuantity ? raw : `1x ${raw}`,
+    quantityAssumed: !hasQuantity,
+    needsHumanReview: true
+  };
+}
+
+function createBibiOrderId(dateIso = new Date().toISOString()) {
+  const compactDate = String(dateIso)
+    .replace(/\D/g, "")
+    .slice(2, 14);
+  const random = crypto.randomBytes(2).toString("hex").toUpperCase();
+  return `BIBI-${compactDate}-${random}`;
+}
+
+function phaseOneWarnings(orderData = emptyOrderData()) {
+  const order = normalizeOrderData(orderData);
+  const warnings = [];
+
+  if (!order.name) warnings.push("Nome do cliente nao identificado.");
+  if (!order.address) warnings.push("Endereco nao identificado.");
+  if (!order.items.length) warnings.push("Itens do pedido nao identificados.");
+  if (!order.payment) warnings.push("Forma de pagamento nao identificada.");
+  if (order.payment === "dinheiro" && !order.changeFor) warnings.push("Cliente informou dinheiro, mas nao informou troco.");
+
+  for (const item of order.items) {
+    if (!itemHasQuantity(item)) {
+      warnings.push(`Quantidade assumida como 1 para: ${item}`);
+    }
+
+    const text = normalize(item);
+    if (hasAny(text, ["meio a meio", "metade", "borda", "catupiry", "cheddar", "12 fatias", "12 pedacos", "maracana", "familia"])) {
+      warnings.push(`Conferir tamanho, sabores e adicionais: ${item}`);
+    }
+  }
+
+  return uniqueList(warnings);
+}
+
+async function savePhaseOneOrder(orderRecord) {
+  if (!orderRecord?.id) {
+    return { ok: false, error: "invalid_order_record" };
+  }
+
+  const key = `orders/${orderRecord.id}`;
+  const customerKey = orderRecord.customer?.phone
+    ? `customers/${orderRecord.customer.phone}/${orderRecord.id}`
+    : "";
+
+  try {
+    const store = await getBlobStore(BIBI_ORDERS_STORE);
+    await store.setJSON(key, orderRecord, {
+      metadata: {
+        status: orderRecord.status,
+        phase: orderRecord.phase,
+        phone: orderRecord.customer?.phone || "",
+        createdAt: orderRecord.createdAt
+      }
+    });
+
+    if (customerKey) {
+      await store.setJSON(customerKey, {
+        id: orderRecord.id,
+        status: orderRecord.status,
+        createdAt: orderRecord.createdAt,
+        phone: orderRecord.customer.phone
+      }, {
+        metadata: {
+          status: orderRecord.status,
+          orderId: orderRecord.id
+        }
+      });
+    }
+
+    return { ok: true, key };
+  } catch (error) {
+    return {
+      ok: false,
+      key,
+      error: error?.message || String(error)
+    };
+  }
 }
 
 async function getConversationSession(phone) {
@@ -2589,6 +2739,8 @@ function json(statusCode, payload) {
 if (process.env.NODE_ENV === "test") {
   exports._test = {
     buildAutoReply,
+    buildPhaseOneOrderRecord,
+    formatManualOrderNotification,
     isManualOrder,
     isOrderDraft,
     isDraftCompletion
