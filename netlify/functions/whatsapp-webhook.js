@@ -1,4 +1,11 @@
 const crypto = require("crypto");
+let OpenAIClient = null;
+try {
+  const openAIImport = require("openai");
+  OpenAIClient = openAIImport.OpenAI || openAIImport.default || openAIImport;
+} catch {
+  OpenAIClient = null;
+}
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -19,7 +26,7 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
-const BIBI_VERSION = "2026-06-16-phase1b-ai-gateway-v2";
+const BIBI_VERSION = "2026-06-16-phase1b-openai-sdk-v3";
 const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
@@ -111,7 +118,8 @@ exports.handler = async function handler(event) {
         aiInterpreterEnabled: AI_INTERPRETER_ENABLED,
         aiInterpreterModel: AI_INTERPRETER_MODEL,
         aiInterpreterAccess: hasAIInterpreterAccess(),
-        aiInterpreterSource: aiCredentialSource()
+        aiInterpreterSource: aiCredentialSource(),
+        aiInterpreterSdkLoaded: Boolean(OpenAIClient)
       });
     }
 
@@ -2108,15 +2116,6 @@ function hasAIInterpreterAccess() {
 }
 
 async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData(), ruleExtraction = emptyOrderData(), context = "order") {
-  const url = aiResponsesUrl();
-  const apiKey = aiApiKey();
-  if (!url || !apiKey) return { ok: false, error: "ai_credentials_missing" };
-
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`
-  };
-
   const requestBody = {
     model: AI_INTERPRETER_MODEL,
     instructions: aiInterpreterInstructions(),
@@ -2138,21 +2137,7 @@ async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData
   };
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(requestBody)
-    });
-
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: "ai_response_failed",
-        status: response.status,
-        detail: body?.error?.message || body?.error || null
-      };
-    }
+    const body = await createAIResponse(requestBody);
 
     const text = openAIResponseText(body);
     if (!text) return { ok: false, error: "ai_response_empty" };
@@ -2170,6 +2155,46 @@ async function interpretOrderFieldsWithAI(rawText = "", current = emptyOrderData
       error: error?.message || String(error)
     };
   }
+}
+
+async function createAIResponse(requestBody) {
+  if (OpenAIClient) {
+    const options = {};
+    const apiKey = aiApiKey();
+    const baseURL = aiBaseUrl();
+    if (apiKey) options.apiKey = apiKey;
+    if (baseURL) options.baseURL = baseURL;
+
+    const client = new OpenAIClient(options);
+    return client.responses.create(requestBody);
+  }
+
+  const url = aiResponsesUrl();
+  const apiKey = aiApiKey();
+  if (!url || !apiKey) {
+    const error = new Error("ai_credentials_missing");
+    error.code = "ai_credentials_missing";
+    throw error;
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(body?.error?.message || body?.error || "ai_response_failed");
+    error.code = "ai_response_failed";
+    error.status = response.status;
+    throw error;
+  }
+
+  return body;
 }
 
 function aiBaseUrl() {
