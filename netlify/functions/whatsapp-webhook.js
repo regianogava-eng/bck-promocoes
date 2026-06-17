@@ -29,7 +29,7 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-17-store-fallback-v1";
+const BIBI_VERSION = "2026-06-17-store-fallback-v2";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -1833,13 +1833,30 @@ function redactNotificationLog(record = {}) {
     messageChars: record.messageChars || 0,
     messagePreview: preview ? `${preview.slice(0, 120)}...` : "",
     sendError: record.sendError || null,
+    customerFallback: record.customerFallback ? {
+      attemptedAt: record.customerFallback.attemptedAt || "",
+      sent: Boolean(record.customerFallback.sent),
+      error: record.customerFallback.error || ""
+    } : null,
     statusHistory: history.map((entry) => ({
       status: entry.status || "",
       at: entry.at || "",
       receivedAt: entry.receivedAt || "",
       source: entry.source || "",
-      errors: Array.isArray(entry.errors) ? entry.errors.length : 0
+      errors: Array.isArray(entry.errors) ? entry.errors.length : 0,
+      errorDetails: Array.isArray(entry.errors)
+        ? entry.errors.slice(0, 3).map(redactStatusError)
+        : []
     }))
+  };
+}
+
+function redactStatusError(error = {}) {
+  return {
+    code: error.code || null,
+    title: redactPhonesInText(error.title || ""),
+    message: redactPhonesInText(error.message || ""),
+    details: redactPhonesInText(error.details || "")
   };
 }
 
