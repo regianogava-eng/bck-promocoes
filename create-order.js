@@ -7,6 +7,7 @@ const JSON_HEADERS = {
 
 const DEFAULT_LOYALTY_TARGET = 8;
 const DEFAULT_LOYALTY_REWARD = "Pedido gratis";
+const SITE_FALLBACK = "https://beerchicken-bck.netlify.app";
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -481,7 +482,9 @@ function formatOrderMessage(order) {
     "",
     ...loyaltyMessageLines(order.loyalty),
     "",
-    `Recebido: ${new Date(order.receivedAt || order.createdAt || Date.now()).toLocaleString("pt-BR")}`
+    `Recebido: ${new Date(order.receivedAt || order.createdAt || Date.now()).toLocaleString("pt-BR")}`,
+    "",
+    ...customerConfirmationCopyLines(order.id)
   ].filter(Boolean).join("\n");
 }
 
@@ -532,6 +535,31 @@ function formatCustomerLoyaltyMessage(order) {
     "Para usar, responda FIDELIDADE nesta conversa com seu nome e telefone.",
     `Pedido que liberou: #${order.id}`
   ].join("\n");
+}
+
+function customerConfirmationCopyLines(orderId = "") {
+  const confirmationUrl = purchaseConfirmationUrl(orderId);
+  return [
+    "MENSAGEM PRONTA PARA ENVIAR AO CLIENTE:",
+    "Use somente depois de confirmar valor, prazo, endereco e disponibilidade.",
+    "",
+    "Seu pedido foi confirmado!",
+    "",
+    "Para finalizar sua confirmacao, clique no link abaixo:",
+    confirmationUrl,
+    "",
+    "Obrigado por pedir com a BCK Beer Chicken."
+  ];
+}
+
+function purchaseConfirmationUrl(orderId = "") {
+  const protocol = String(orderId || "").trim();
+  const baseUrl = `${publicSiteUrl()}/obrigado`;
+  return protocol ? `${baseUrl}?pedido=${encodeURIComponent(protocol)}` : baseUrl;
+}
+
+function publicSiteUrl() {
+  return (process.env.SITE_URL || process.env.URL || SITE_FALLBACK).replace(/\/$/, "");
 }
 
 function createOrderId() {

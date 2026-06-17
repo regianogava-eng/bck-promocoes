@@ -29,7 +29,7 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-17-store-fallback-v2";
+const BIBI_VERSION = "2026-06-17-confirmation-link-v1";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -1477,8 +1477,31 @@ function formatManualOrderNotification(customerPhone, orderText, orderRecord = n
     ...warnings.map((warning) => `- ${warning}`),
     ...queueWarning,
     "",
-    "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar."
+    "Acesse a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima para confirmar.",
+    "",
+    ...customerConfirmationCopyLines(orderRecord?.id || "")
   ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
+}
+
+function customerConfirmationCopyLines(orderId = "") {
+  const confirmationUrl = purchaseConfirmationUrl(orderId);
+  return [
+    "MENSAGEM PRONTA PARA ENVIAR AO CLIENTE:",
+    "Use somente depois de confirmar valor, prazo, endereco e disponibilidade.",
+    "",
+    "Seu pedido foi confirmado!",
+    "",
+    "Para finalizar sua confirmacao, clique no link abaixo:",
+    confirmationUrl,
+    "",
+    "Obrigado por pedir com a BCK Beer Chicken."
+  ];
+}
+
+function purchaseConfirmationUrl(orderId = "") {
+  const protocol = String(orderId || "").trim();
+  const baseUrl = `${publicSiteUrl()}/obrigado`;
+  return protocol ? `${baseUrl}?pedido=${encodeURIComponent(protocol)}` : baseUrl;
 }
 
 async function saveStoreNotificationLog({ type, to, customerPhone, orderId = "", sourceMessageId = "", body = "", sendResult = {} } = {}) {
