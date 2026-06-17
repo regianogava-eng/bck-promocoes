@@ -1583,7 +1583,7 @@ async function saveStoreNotificationStatus(status = {}) {
       conversationId: status.conversationId || "",
       errors: safeStatusErrors(status.errors)
     };
-    const record = existing && typeof existing === "object"
+    let record = existing && typeof existing === "object"
       ? {
           ...existing,
           status: status.status,
@@ -1615,6 +1615,10 @@ async function saveStoreNotificationStatus(status = {}) {
       metadata: notificationMetadata(record)
     });
 
+    if (shouldNotifyCustomerOfStoreFailure(record)) {
+      record = await notifyCustomerOfStoreDeliveryFailure({ store, messageKey, record });
+    }
+
     console.log("BCK_BIBI_STORE_MESSAGE_STATUS", JSON.stringify({
       logId: record.id,
       orderId: record.orderId || null,
@@ -1634,6 +1638,73 @@ async function saveStoreNotificationStatus(status = {}) {
     }));
     return { ok: false, status: status.status || "", metaMessageId: status.id || "", error: error?.message || String(error) };
   }
+}
+
+function shouldNotifyCustomerOfStoreFailure(record = {}) {
+  if (record.status !== "failed") return false;
+  if (record.type !== "store_order_review") return false;
+  if (!record.customerPhone || !record.orderId) return false;
+  if (record.customerFallback?.attemptedAt) return false;
+
+  const history = Array.isArray(record.statusHistory) ? record.statusHistory : [];
+  return !history.some((entry) => entry.source === "store_notify_failed_customer_fallback");
+}
+
+async function notifyCustomerOfStoreDeliveryFailure({ store, messageKey, record }) {
+  const now = new Date().toISOString();
+  const storeNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const message = [
+    "Aviso importante: seu pedido foi salvo, mas o aviso automatico para a equipe falhou agora.",
+    `Protocolo: ${record.orderId}`,
+    "",
+    "Para evitar atraso, chame a equipe no numero oficial:",
+    `https://wa.me/${storeNumber}`
+  ].join("\n");
+
+  const sent = await sendTextMessage(record.customerPhone, message);
+  const fallbackEntry = {
+    status: sent.ok ? "fallback_sent" : "fallback_failed",
+    at: now,
+    receivedAt: now,
+    source: "store_notify_failed_customer_fallback",
+    metaMessageId: sent.messageId || "",
+    errors: sent.ok ? [] : [{
+      code: sent.status || null,
+      title: sent.error || "customer_fallback_failed",
+      message: sent.detail ? JSON.stringify(sent.detail).slice(0, 300) : sent.error || "customer_fallback_failed",
+      details: ""
+    }]
+  };
+
+  const updated = {
+    ...record,
+    updatedAt: now,
+    customerFallback: {
+      attemptedAt: now,
+      sent: Boolean(sent.ok),
+      messageId: sent.messageId || "",
+      error: sent.ok ? "" : sent.error || "customer_fallback_failed"
+    },
+    statusHistory: [...(Array.isArray(record.statusHistory) ? record.statusHistory : []), fallbackEntry]
+  };
+
+  await store.setJSON(messageKey, updated, {
+    metadata: notificationMetadata(updated)
+  });
+  await store.setJSON(`logs/${updated.id}`, updated, {
+    metadata: notificationMetadata(updated)
+  });
+
+  console.log("BCK_BIBI_STORE_NOTIFY_CUSTOMER_FALLBACK", JSON.stringify({
+    logId: updated.id,
+    orderId: updated.orderId || null,
+    customer: maskPhone(updated.customerPhone),
+    sent: Boolean(sent.ok),
+    metaMessageId: sent.messageId || null,
+    error: sent.ok ? null : sent.error || "customer_fallback_failed"
+  }));
+
+  return updated;
 }
 
 function createNotificationLogId(metaMessageId = "") {
