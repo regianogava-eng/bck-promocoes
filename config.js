@@ -25,7 +25,11 @@ window.BCK_CONFIG = {
   automation: {
     enabled: true,
     orderPrefix: "BCK",
-    operatingHours: "Todos os dias, das 17h as 00h",
+    operatingHours: "Segunda a sexta, das 17h as 00h",
+    scheduleOverrides: {
+      businessDaysOnly: true,
+      closedDates: ["2026-06-19"]
+    },
     estimatedPrepMinutes: 35,
     estimatedDeliveryMinutes: 55,
     autoConfirmText: "Pedido recebido automaticamente pelo site. Se os dados estiverem certos, ja pode seguir para preparo.",

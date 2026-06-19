@@ -56,11 +56,14 @@
     "closedLabel": "Fechado agora",
     "blockCheckoutWhenClosed": true,
     "closedCheckoutMessage": "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+    "closedDates": [
+      "2026-06-19"
+    ],
     "days": [
       {
         "key": "sun",
         "label": "Domingo",
-        "open": true,
+        "open": false,
         "openTime": "17:00",
         "closeTime": "00:00",
         "cutoffTime": "23:30"
@@ -108,7 +111,7 @@
       {
         "key": "sat",
         "label": "Sabado",
-        "open": true,
+        "open": false,
         "openTime": "17:00",
         "closeTime": "00:00",
         "cutoffTime": "23:30"

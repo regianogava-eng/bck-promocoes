@@ -14,13 +14,13 @@
     { key: "bebida", label: "Bebida", source: "bebidas", required: true, itemIds: ["refri-gelado"] }
   ];
   var DEFAULT_SCHEDULE_DAYS = [
-    { key: "sun", label: "Domingo", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+    { key: "sun", label: "Domingo", open: false, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
     { key: "mon", label: "Segunda", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
     { key: "tue", label: "Terca", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
     { key: "wed", label: "Quarta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
     { key: "thu", label: "Quinta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
     { key: "fri", label: "Sexta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
-    { key: "sat", label: "Sabado", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
+    { key: "sat", label: "Sabado", open: false, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
   ];
 
   var state = {
@@ -78,6 +78,7 @@
     elements.scheduleEnabled = document.getElementById("scheduleEnabled");
     elements.scheduleBlockCheckout = document.getElementById("scheduleBlockCheckout");
     elements.scheduleClosedMessage = document.getElementById("scheduleClosedMessage");
+    elements.scheduleClosedDates = document.getElementById("scheduleClosedDates");
     elements.scheduleDays = document.getElementById("scheduleDays");
     elements.dialog = document.getElementById("productDialog");
     elements.form = document.getElementById("productForm");
@@ -363,6 +364,7 @@
       closedLabel: schedule.closedLabel || "Fechado agora",
       blockCheckoutWhenClosed: schedule.blockCheckoutWhenClosed !== false,
       closedCheckoutMessage: schedule.closedCheckoutMessage || "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+      closedDates: normalizeClosedDates(schedule.closedDates),
       days: DEFAULT_SCHEDULE_DAYS.map(function (fallback) {
         return normalizeScheduleDay(byKey[fallback.key], fallback);
       })
@@ -374,11 +376,26 @@
     return {
       key: fallback.key,
       label: day.label || fallback.label,
-      open: day.open !== false,
+      open: typeof day.open === "boolean" ? day.open : fallback.open !== false,
       openTime: normalizeClockTime(day.openTime, fallback.openTime),
       closeTime: normalizeClockTime(day.closeTime, fallback.closeTime),
       cutoffTime: normalizeClockTime(day.cutoffTime, fallback.cutoffTime)
     };
+  }
+
+  function normalizeClosedDates(value) {
+    var list = Array.isArray(value) ? value : String(value || "").split(/[\s,;]+/);
+    var seen = {};
+
+    return list.map(function (item) {
+      return String(item || "").trim();
+    }).filter(function (item) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(item) || seen[item]) {
+        return false;
+      }
+      seen[item] = true;
+      return true;
+    });
   }
 
   function normalizeClockTime(value, fallback) {
@@ -450,6 +467,7 @@
     elements.scheduleEnabled.checked = schedule.enabled !== false;
     elements.scheduleBlockCheckout.checked = schedule.blockCheckoutWhenClosed !== false;
     elements.scheduleClosedMessage.value = schedule.closedCheckoutMessage || "";
+    elements.scheduleClosedDates.value = (schedule.closedDates || []).join("\n");
     elements.scheduleDays.innerHTML = schedule.days.map(function (day) {
       return [
         '<article class="schedule-day" data-schedule-day="' + escapeAttr(day.key) + '">',
@@ -653,6 +671,7 @@
       closedLabel: current.closedLabel || "Fechado agora",
       blockCheckoutWhenClosed: elements.scheduleBlockCheckout.checked,
       closedCheckoutMessage: elements.scheduleClosedMessage.value.trim() || current.closedCheckoutMessage,
+      closedDates: normalizeClosedDates(elements.scheduleClosedDates.value),
       days: days
     });
 
@@ -1117,6 +1136,7 @@
       closedLabel: normalized.closedLabel,
       blockCheckoutWhenClosed: normalized.blockCheckoutWhenClosed !== false,
       closedCheckoutMessage: normalized.closedCheckoutMessage,
+      closedDates: normalized.closedDates,
       days: normalized.days
     };
   }

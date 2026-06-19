@@ -7,13 +7,13 @@ const COMBO_BUILDER_FALLBACK_GROUPS = [
 ];
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const DEFAULT_SCHEDULE_DAYS = [
-  { key: "sun", label: "Domingo", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
+  { key: "sun", label: "Domingo", open: false, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
   { key: "mon", label: "Segunda", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
   { key: "tue", label: "Terca", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
   { key: "wed", label: "Quarta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
   { key: "thu", label: "Quinta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
   { key: "fri", label: "Sexta", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" },
-  { key: "sat", label: "Sabado", open: true, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
+  { key: "sat", label: "Sabado", open: false, openTime: "17:00", closeTime: "00:00", cutoffTime: "23:30" }
 ];
 const CATALOG_API_URL = "/.netlify/functions/get-catalog";
 
@@ -161,7 +161,7 @@ function normalizeSchedule(settings = {}) {
   const days = Array.isArray(settings.days) ? settings.days : [];
   const daysByKey = new Map(days.map((day) => [day.key, day]));
 
-  return {
+  const schedule = {
     enabled: settings.enabled !== false,
     timezone: settings.timezone || "America/Sao_Paulo",
     openLabel: settings.openLabel || "Aberto agora",
@@ -169,18 +169,49 @@ function normalizeSchedule(settings = {}) {
     blockCheckoutWhenClosed: settings.blockCheckoutWhenClosed !== false,
     closedCheckoutMessage: settings.closedCheckoutMessage
       || "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+    closedDates: normalizeClosedDates(settings.closedDates),
     days: DEFAULT_SCHEDULE_DAYS.map((fallback) => normalizeScheduleDay(daysByKey.get(fallback.key), fallback))
   };
+
+  return applyScheduleOverrides(schedule);
 }
 
 function normalizeScheduleDay(day = {}, fallback = DEFAULT_SCHEDULE_DAYS[0]) {
   return {
     key: fallback.key,
     label: day.label || fallback.label,
-    open: day.open !== false,
+    open: typeof day.open === "boolean" ? day.open : fallback.open !== false,
     openTime: normalizeClockTime(day.openTime, fallback.openTime),
     closeTime: normalizeClockTime(day.closeTime, fallback.closeTime),
     cutoffTime: normalizeClockTime(day.cutoffTime, fallback.cutoffTime)
+  };
+}
+
+function normalizeClosedDates(value = []) {
+  const list = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\s,;]+/);
+
+  return [...new Set(list
+    .map((item) => String(item || "").trim())
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item)))];
+}
+
+function applyScheduleOverrides(schedule) {
+  const overrides = config.automation?.scheduleOverrides || {};
+  const closedDates = normalizeClosedDates([
+    ...(schedule.closedDates || []),
+    ...(overrides.closedDates || [])
+  ]);
+  const businessDaysOnly = Boolean(overrides.businessDaysOnly);
+
+  return {
+    ...schedule,
+    closedDates,
+    days: schedule.days.map((day) => ({
+      ...day,
+      open: businessDaysOnly && (day.key === "sun" || day.key === "sat") ? false : day.open
+    }))
   };
 }
 
@@ -1445,6 +1476,28 @@ function zonedNowParts(date = new Date(), timeZone = "America/Sao_Paulo") {
   };
 }
 
+function zonedDateString(date = new Date(), timeZone = "America/Sao_Paulo") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function addDays(date, days) {
+  return new Date(date.getTime() + (days * 24 * 60 * 60 * 1000));
+}
+
+function isScheduleClosedOn(schedule, dateKey) {
+  return normalizeClosedDates(schedule.closedDates).includes(dateKey);
+}
+
 function dayWindow(day, endField = "closeTime") {
   if (!day || day.open === false) return null;
 
@@ -1464,11 +1517,14 @@ function findScheduleDay(schedule, key) {
   return schedule.days.find((day) => day.key === key);
 }
 
-function findNextAcceptingTime(schedule, dayIndex, minutes) {
-  for (let offset = 0; offset < 8; offset += 1) {
+function findNextAcceptingTime(schedule, dayIndex, minutes, date = new Date()) {
+  for (let offset = 0; offset < 14; offset += 1) {
     const nextIndex = (dayIndex + offset) % WEEKDAY_KEYS.length;
     const day = findScheduleDay(schedule, WEEKDAY_KEYS[nextIndex]);
     if (!day || day.open === false) continue;
+
+    const dateKey = zonedDateString(addDays(date, offset), schedule.timezone);
+    if (isScheduleClosedOn(schedule, dateKey)) continue;
 
     const window = dayWindow(day, "cutoffTime");
     if (!window) continue;
@@ -1496,16 +1552,20 @@ function getScheduleStatus(date = new Date()) {
   }
 
   const now = zonedNowParts(date, schedule.timezone);
+  const todayDate = zonedDateString(date, schedule.timezone);
+  const previousDate = zonedDateString(addDays(date, -1), schedule.timezone);
   const today = findScheduleDay(schedule, WEEKDAY_KEYS[now.dayIndex]) || schedule.days[0];
   const previousIndex = (now.dayIndex + WEEKDAY_KEYS.length - 1) % WEEKDAY_KEYS.length;
   const previous = findScheduleDay(schedule, WEEKDAY_KEYS[previousIndex]);
-  const todayOpen = isWithinDayWindow(today, now.minutes, "closeTime");
-  const previousOpen = isWithinDayWindow(previous, now.minutes + 1440, "closeTime");
+  const todayClosed = isScheduleClosedOn(schedule, todayDate);
+  const previousClosed = isScheduleClosedOn(schedule, previousDate);
+  const todayOpen = !todayClosed && isWithinDayWindow(today, now.minutes, "closeTime");
+  const previousOpen = !previousClosed && isWithinDayWindow(previous, now.minutes + 1440, "closeTime");
   const activeDay = todayOpen ? today : previousOpen ? previous : today;
   const open = todayOpen || previousOpen;
   const compareMinutes = previousOpen && !todayOpen ? now.minutes + 1440 : now.minutes;
   const acceptingOrders = open && isWithinDayWindow(activeDay, compareMinutes, "cutoffTime");
-  const next = acceptingOrders ? null : findNextAcceptingTime(schedule, now.dayIndex, now.minutes);
+  const next = acceptingOrders ? null : findNextAcceptingTime(schedule, now.dayIndex, now.minutes, date);
 
   return {
     open,
@@ -1514,6 +1574,7 @@ function getScheduleStatus(date = new Date()) {
     today,
     activeDay,
     next,
+    dateClosed: todayClosed,
     reason: open ? "orders_closed" : "store_closed"
   };
 }
@@ -1538,7 +1599,9 @@ function renderScheduleStatus() {
   }
 
   if (els.hoursValue) {
-    els.hoursValue.textContent = today ? formatScheduleWindow(today) : "17h as 00h";
+    els.hoursValue.textContent = status.dateClosed
+      ? "Fechado hoje"
+      : today ? formatScheduleWindow(today) : "17h as 00h";
   }
 
   if (els.hoursNote) {
