@@ -29,7 +29,9 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-19-admin-confirmation-link-v1";
+const BIBI_VERSION = "2026-06-19-humanized-bibi-v1";
+const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
+const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -200,6 +202,7 @@ exports.handler = async function handler(event) {
       continue;
     }
 
+    await showTypingBeforeReply(message);
     const sent = await sendTextMessage(message.from, result.replyText);
 
     if (sent.ok) {
@@ -942,18 +945,20 @@ async function forwardCompletedOrder(message, session, reason) {
       "",
       "Resumo do pedido:",
       summary,
+      freeDeliveryLine(),
       "",
       "Por favor, chame a equipe no numero oficial: (28) 99932-9677."
     ].join("\n"));
   }
 
   return withSession(next, [
-    "Certo, recebi e encaminhei seu pedido para a equipe conferir antes de confirmar.",
+    "Show de bola, recebi seu pedido e ja encaminhei para a equipe conferir antes de confirmar.",
     `Protocolo: ${orderRecord.id}`,
     "",
     summary,
+    freeDeliveryLine(),
     "",
-    "Eles vao conferir valores, disponibilidade e detalhes do pedido, depois te respondem por aqui com a confirmacao."
+    "A equipe vai conferir valor, disponibilidade e prazo. Depois te responde por aqui com a confirmacao."
   ].join("\n"));
 }
 
@@ -1289,26 +1294,25 @@ function buildAutoReply(message) {
 
 function mainMenu(siteUrl) {
   return [
-    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
-    "E um prazer te atender.",
+    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, atendente virtual da ${STORE_NAME}.`,
     "",
-    "Como posso te ajudar?",
+    "Me fala o que voce quer hoje que eu te ajudo a resolver rapidinho.",
     "",
     "1 - Pedir pelo cardapio",
     "2 - Fazer pedido comigo",
     "",
-    "Veja nosso cardapio:",
+    "Cardapio:",
     siteUrl
   ].join("\n");
 }
 
 function assistantReply(siteUrl) {
   return [
-    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, sua atendente virtual da ${STORE_NAME}.`,
+    `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, da ${STORE_NAME}.`,
     "",
-    "Posso te ajudar a escolher combo, tirar duvida de entrega, explicar pagamento ou mandar o link do pedido.",
+    "Posso te ajudar a escolher combo, montar pedido, tirar duvida de entrega ou chamar a equipe.",
     "",
-    "Me responda com uma destas opcoes:",
+    "Se quiser, me responda com uma destas opcoes:",
     "1 - Ver promocoes",
     "2 - Montar pedido no site",
     "3 - Entrega e endereco",
@@ -1366,19 +1370,13 @@ function orderReply(siteUrl, checkoutUrl) {
 
 function whatsappOrderReply(siteUrl) {
   return [
-    "Claro. Pode fazer seu pedido comigo por aqui.",
+    "Claro, pode fazer seu pedido comigo por aqui.",
     "",
-    "Eu vou organizar as informacoes e enviar para o setor responsavel confirmar tudo com voce.",
+    "Me conta primeiro o que voce vai querer hoje.",
     "",
-    "Para montar certinho, me mande por favor:",
-    "Nome:",
-    "Endereco completo:",
-    "Bairro ou ponto de referencia:",
-    "Pedido:",
-    "Forma de pagamento:",
-    "Observacao, se tiver:",
+    "Pode mandar do seu jeito: pizza, frango, batata, combo e bebida.",
     "",
-    "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
+    "Se preferir montar pelo cardapio, ele ja manda o pedido organizado:",
     siteUrl
   ].join("\n");
 }
@@ -1387,37 +1385,23 @@ function orderHelpReply(siteUrl) {
   return [
     "Claro, eu te ajudo.",
     "",
-    "Voce pode pedir de dois jeitos:",
-    "",
-    "1 - Pelo cardapio online, montando o carrinho:",
+    "O caminho mais rapido e montar pelo cardapio:",
     siteUrl,
     "",
-    "2 - Direto por aqui no WhatsApp. Nesse caso, me mande:",
-    "Nome:",
-    "Endereco completo:",
-    "Bairro ou ponto de referencia:",
-    "Pedido:",
-    "Forma de pagamento:",
-    "Troco ou observacao, se tiver:",
+    "Mas tambem posso montar com voce por aqui.",
     "",
-    "Depois eu encaminho para o setor responsavel confirmar tudo com voce."
+    "Me manda primeiro o que voce quer pedir hoje."
   ].join("\n");
 }
 
 function orderDraftReply(orderText, siteUrl) {
   return [
-    "Certo, ja entendi que voce quer fazer um pedido.",
+    "Certo, ja vi que voce quer fazer um pedido.",
     "",
     "Recebi assim:",
     formatCustomerOrder(orderText),
     "",
-    "Para eu encaminhar certinho ao setor responsavel, me mande por favor:",
-    "Nome:",
-    "Endereco completo:",
-    "Bairro ou ponto de referencia:",
-    "Forma de pagamento:",
-    "Troco, se precisar:",
-    "Observacao, se tiver:",
+    "Me passa seu nome para eu colocar no pedido?",
     "",
     "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
     siteUrl
@@ -1550,15 +1534,9 @@ function customizationReply(siteUrl) {
 
 function deliveryReply(siteUrl) {
   return [
-    `Pode fazer seu pedido comigo por aqui. A entrega em ${CITY} e regiao sera confirmada pelo setor responsavel.`,
+    `Show! A entrega da BCK e gratis nas regioes atendidas de ${CITY}.`,
     "",
-    "Para encaminhar certinho, me mande por favor:",
-    "Nome:",
-    "Endereco completo:",
-    "Bairro ou ponto de referencia:",
-    "Pedido:",
-    "Forma de pagamento:",
-    "Observacao, se tiver:",
+    "Me manda seu endereco completo com bairro que eu te ajudo a seguir.",
     "",
     "Se preferir, monte pelo cardapio e envie o pedido completo:",
     siteUrl
@@ -1664,6 +1642,68 @@ async function sendTextMessage(to, body) {
     contacts: Array.isArray(responseBody?.contacts) ? responseBody.contacts : [],
     raw: responseBody
   };
+}
+
+async function showTypingBeforeReply(message = {}) {
+  if (!TYPING_INDICATOR_ENABLED || !message.id) return;
+
+  try {
+    const sent = await sendTypingIndicator(message.id);
+    if (sent.ok) await wait(TYPING_DELAY_MS);
+  } catch (error) {
+    console.warn("BCK_TYPING_INDICATOR_SKIPPED", JSON.stringify({
+      messageId: message.id ? maskMessageId(message.id) : "",
+      message: error?.message || String(error)
+    }));
+  }
+}
+
+async function sendTypingIndicator(messageId = "") {
+  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const apiVersion = process.env.WHATSAPP_API_VERSION || "v25.0";
+
+  if (!token || !phoneNumberId || !messageId) {
+    return { ok: false, error: "typing_env_missing" };
+  }
+
+  const response = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+      typing_indicator: {
+        type: "text"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.warn("BCK_TYPING_INDICATOR_FAILED", JSON.stringify({
+      status: response.status,
+      messageId: maskMessageId(messageId),
+      detail: safeJsonDetail(detail)
+    }));
+    return { ok: false, error: "typing_indicator_failed", status: response.status };
+  }
+
+  return { ok: true };
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function maskMessageId(messageId = "") {
+  const value = String(messageId || "");
+  if (value.length <= 12) return value ? "****" : "";
+  return `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
 function safeJsonDetail(detail) {
@@ -3461,6 +3501,18 @@ function formatOrderSummary(data = emptyOrderData()) {
   ].filter(Boolean).join("\n");
 }
 
+function freeDeliveryLine() {
+  return `Taxa de entrega: R$ 0,00 nas regioes atendidas de ${CITY}.`;
+}
+
+function freeDeliveryPrompt() {
+  return [
+    "Boa noticia: a entrega da BCK e gratis nas regioes atendidas.",
+    "",
+    "Qual e seu endereco completo com bairro?"
+  ].join("\n");
+}
+
 function formatItemsForSummary(items = []) {
   return items.map((item) => itemHasQuantity(item) ? item : `1x ${item}`).join(" | ");
 }
@@ -3494,29 +3546,20 @@ function paymentLabel(payment) {
 function startCollectingReply(siteUrl, options = {}) {
   if (isPeakServiceHour() || options.mode === SERVICE_MODES.EXPRESS) {
     return [
-      "Fechando rapidinho.",
+      "Bora agilizar.",
       "",
-      "Me mande em uma mensagem:",
-      "Nome, endereco, CEP se souber, pedido e pagamento.",
+      "Me manda primeiro o que voce quer pedir hoje.",
       "",
-      "Eu organizo e envio para a equipe conferir."
+      "Pode escrever do seu jeito que eu organizo para a equipe conferir."
     ].join("\n");
   }
 
   return [
-    "Claro. Pode fazer seu pedido comigo por aqui.",
+    "Show de bola. Pode fazer seu pedido comigo por aqui.",
     "",
-    "Me conta o que voce vai querer hoje. Pode incluir pizzas, frangos, batatas, combos e bebidas.",
+    "Me conta primeiro o que voce vai querer hoje.",
     "",
-    "Para eu encaminhar certinho, me mande:",
-    "Nome:",
-    "Endereco completo:",
-    "CEP da rua, se souber:",
-    "Bairro ou ponto de referencia:",
-    "Pedido:",
-    "Forma de pagamento:",
-    "Troco, se precisar:",
-    "Observacao, se tiver:",
+    "Pode incluir pizzas, frangos, batatas, combos e bebidas.",
     "",
     "Se preferir, monte no cardapio que o pedido ja chega organizado aqui:",
     siteUrl
@@ -3608,10 +3651,32 @@ function chickenGuidanceReply() {
 function askMissingFieldsReply(data, missing, options = {}) {
   const order = normalizeOrderData(data);
 
+  if (missing.includes("pedido")) {
+    if (options.mode === SERVICE_MODES.EXPRESS || isPeakServiceHour()) {
+      return [
+        "Fechado. Me manda o pedido primeiro.",
+        "",
+        "Pode ser bem direto: item, sabor, tamanho e bebida, se tiver."
+      ].join("\n");
+    }
+
+    return [
+      "Perfeito. Me conta o que voce vai querer hoje.",
+      "",
+      "Pode mandar do seu jeito: pizza, frango, batata, combo, bebida e observacao."
+    ].join("\n");
+  }
+
+  if (missing.includes("nome")) {
+    return "Show. Qual nome eu coloco no pedido?";
+  }
+
   if (missing.includes("endereco") && order.addressDraft) {
     return [
       "Anotei o endereco assim:",
       order.addressDraft,
+      "",
+      "E a entrega e gratis nas regioes atendidas.",
       "",
       "Falta so o numero da casa/comercio. Pode me mandar?",
       "",
@@ -3620,10 +3685,14 @@ function askMissingFieldsReply(data, missing, options = {}) {
   }
 
   if (missing.includes("endereco")) {
+    return freeDeliveryPrompt();
+  }
+
+  if (missing.includes("pagamento")) {
     return [
-      "Beleza. Agora me passa o endereco completo, por favor.",
+      "Boa, esta quase pronto.",
       "",
-      "Se souber o CEP da rua, manda junto. Assim eu puxo rua e bairro certinho."
+      "Qual vai ser a forma de pagamento: Pix, cartao ou dinheiro?"
     ].join("\n");
   }
 
@@ -3631,9 +3700,10 @@ function askMissingFieldsReply(data, missing, options = {}) {
     return [
       "Anotei ate agora:",
       formatOrderSummary(order),
+      freeDeliveryLine(),
       "",
       "Vai precisar de troco? Se sim, pra qual valor? Se nao, responda NAO."
-    ].filter(Boolean).join("\n");
+    ].join("\n");
   }
 
   const labels = missingFieldLabels(missing);
@@ -3660,12 +3730,13 @@ function continueCollectingReply(data) {
 
 function confirmationReply(data) {
   return [
-    "Confere aqui:",
+    "Prontinho. Da uma olhada se ficou tudo certinho:",
     "",
     formatOrderSummary(data),
+    freeDeliveryLine(),
     "",
-    "Se a quantidade nao estiver certa, responda ALTERAR.",
-    "Esta tudo certo? Responda SIM para enviar ou ALTERAR para corrigir."
+    "Se estiver certo, responda SIM que eu encaminho para a equipe conferir e confirmar.",
+    "Se precisar corrigir algo, responda ALTERAR."
   ].join("\n");
 }
 
