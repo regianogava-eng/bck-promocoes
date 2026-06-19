@@ -29,7 +29,7 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-17-confirmation-link-v1";
+const BIBI_VERSION = "2026-06-19-admin-confirmation-link-v1";
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
