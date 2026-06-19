@@ -167,6 +167,28 @@ exports.handler = async function handler(event) {
   const replies = [];
 
   for (const message of messages) {
+    const adminCommand = await handleAdminConfirmationCommand(message);
+    if (adminCommand.handled) {
+      if (!adminCommand.replyText) {
+        replies.push({
+          to: message.from,
+          sent: false,
+          reason: adminCommand.reason || "admin_command_ignored",
+          adminCommand: true
+        });
+        continue;
+      }
+
+      const sent = await sendTextMessage(message.from, adminCommand.replyText);
+      replies.push({
+        to: message.from,
+        sent: sent.ok,
+        reason: sent.error || adminCommand.reason || null,
+        adminCommand: true
+      });
+      continue;
+    }
+
     const result = await withSessionLock(message.from, () => handleBibiMessage(message));
 
     if (!result.replyText) {
@@ -297,6 +319,283 @@ function messageText(item) {
   }
 
   return `__unsupported__:${item.type || "unknown"}`;
+}
+
+async function handleAdminConfirmationCommand(message) {
+  const orderId = extractAdminConfirmationOrderId(message.text);
+  if (!orderId) {
+    return { handled: false };
+  }
+
+  const fromNumber = normalizeStoreNotifyNumber(message.from);
+  const storeNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
+
+  if (!storeNumber || fromNumber !== storeNumber) {
+    console.warn("BCK_ADMIN_COMMAND_DENIED", JSON.stringify({
+      from: maskPhone(message.from),
+      orderId
+    }));
+    return { handled: true, reason: "admin_command_unauthorized", replyText: "" };
+  }
+
+  console.log("BCK_ADMIN_CONFIRM_COMMAND", JSON.stringify({
+    from: maskPhone(message.from),
+    orderId
+  }));
+
+  const result = await confirmOrderAndSendPurchaseLink(orderId);
+  return {
+    handled: true,
+    reason: result.status,
+    replyText: adminConfirmationReply(result)
+  };
+}
+
+function extractAdminConfirmationOrderId(text = "") {
+  const match = String(text || "").trim().match(/^confirmar\s+((?:BCK|BIBI)-[\w-]+)/i);
+  return match ? match[1].toUpperCase() : "";
+}
+
+async function confirmOrderAndSendPurchaseLink(orderId = "") {
+  const normalizedOrderId = String(orderId || "").trim().toUpperCase();
+  if (!normalizedOrderId) {
+    return { ok: false, status: "invalid_order_id", orderId: "" };
+  }
+
+  const found = await findOrderForConfirmation(normalizedOrderId);
+  if (!found) {
+    return { ok: false, status: "order_not_found", orderId: normalizedOrderId };
+  }
+
+  const order = found.record || {};
+  const alreadySentAt = order.thankYouLinkSentAt || order.tracking?.thankYouLinkSentAt || "";
+  const alreadyMessageId = order.thankYouLinkMessageId || order.tracking?.thankYouLinkMessageId || "";
+  if (alreadySentAt) {
+    return {
+      ok: true,
+      status: "already_processed",
+      orderId: normalizedOrderId,
+      sentAt: alreadySentAt,
+      messageId: alreadyMessageId,
+      customerPhone: confirmationCustomerPhone(order),
+      confirmationUrl: order.thankYouLinkUrl || order.tracking?.purchaseConfirmationUrl || purchaseConfirmationUrl(normalizedOrderId, confirmationOrderValue(order))
+    };
+  }
+
+  const customerPhone = confirmationCustomerPhone(order);
+  const total = confirmationOrderValue(order);
+  const confirmationUrl = purchaseConfirmationUrl(normalizedOrderId, total);
+
+  if (!customerPhone) {
+    await saveConfirmedOrderAttempt(found, {
+      ok: false,
+      status: "customer_phone_missing",
+      orderId: normalizedOrderId,
+      confirmationUrl,
+      error: "customer_phone_missing"
+    });
+    return { ok: false, status: "customer_phone_missing", orderId: normalizedOrderId };
+  }
+
+  const sent = await sendTextMessage(customerPhone, confirmedOrderCustomerMessage(confirmationUrl));
+  const saved = await saveConfirmedOrderAttempt(found, {
+    ok: sent.ok,
+    status: sent.ok ? "sent" : "send_failed",
+    orderId: normalizedOrderId,
+    customerPhone,
+    confirmationUrl,
+    messageId: sent.messageId || "",
+    error: sent.error || "",
+    detail: sent.detail || null
+  });
+
+  return {
+    ok: sent.ok,
+    status: sent.ok ? "sent" : "send_failed",
+    orderId: normalizedOrderId,
+    customerPhone,
+    confirmationUrl,
+    messageId: sent.messageId || "",
+    error: sent.error || "",
+    saved: saved.ok
+  };
+}
+
+async function findOrderForConfirmation(orderId = "") {
+  const stores = orderId.startsWith("BIBI-")
+    ? [BIBI_ORDERS_STORE, "bck-orders"]
+    : ["bck-orders", BIBI_ORDERS_STORE];
+
+  for (const storeName of stores) {
+    try {
+      const store = await getBlobStore(storeName);
+      const key = `orders/${orderId}`;
+      const record = await store.get(key, { consistency: "strong", type: "json" });
+      if (record) {
+        return {
+          store,
+          storeName,
+          key,
+          record: {
+            ...record,
+            id: record.id || orderId
+          }
+        };
+      }
+    } catch (error) {
+      console.error("BCK_CONFIRM_ORDER_LOOKUP_ERROR", JSON.stringify({
+        storeName,
+        orderId,
+        message: error?.message || String(error)
+      }));
+    }
+  }
+
+  return null;
+}
+
+async function saveConfirmedOrderAttempt(found, result) {
+  const now = new Date().toISOString();
+  const original = found.record || {};
+  const record = {
+    ...original,
+    id: original.id || result.orderId,
+    status: "confirmado",
+    confirmedAt: original.confirmedAt || now,
+    updatedAt: now,
+    thankYouLinkUrl: result.confirmationUrl || "",
+    thankYouLinkLastAttemptAt: now,
+    thankYouLinkSendStatus: result.status || "",
+    thankYouLinkSendError: result.ok ? "" : result.error || result.status || "send_failed",
+    tracking: {
+      ...(original.tracking || {}),
+      purchaseConfirmationUrl: result.confirmationUrl || "",
+      thankYouLinkLastAttemptAt: now,
+      thankYouLinkSendStatus: result.status || "",
+      thankYouLinkSendError: result.ok ? "" : result.error || result.status || "send_failed"
+    }
+  };
+
+  if (result.ok) {
+    record.thankYouLinkSentAt = now;
+    record.thankYouLinkMessageId = result.messageId || "";
+    record.tracking.thankYouLinkSentAt = now;
+    record.tracking.thankYouLinkMessageId = result.messageId || "";
+  }
+
+  try {
+    await found.store.setJSON(found.key, record, {
+      metadata: confirmedOrderMetadata(record)
+    });
+
+    if (found.storeName === BIBI_ORDERS_STORE && confirmationCustomerPhone(record)) {
+      await found.store.setJSON(`customers/${confirmationCustomerPhone(record)}/${record.id}`, {
+        id: record.id,
+        status: record.status,
+        createdAt: record.createdAt || "",
+        updatedAt: record.updatedAt || "",
+        phone: confirmationCustomerPhone(record),
+        thankYouLinkSentAt: record.thankYouLinkSentAt || ""
+      }, {
+        metadata: {
+          status: record.status,
+          orderId: record.id,
+          phone: confirmationCustomerPhone(record)
+        }
+      });
+    }
+
+    return { ok: true, record };
+  } catch (error) {
+    console.error("BCK_CONFIRM_ORDER_SAVE_ERROR", JSON.stringify({
+      orderId: result.orderId,
+      storeName: found.storeName,
+      message: error?.message || String(error)
+    }));
+    return { ok: false, error: error?.message || String(error), record };
+  }
+}
+
+function confirmedOrderMetadata(record = {}) {
+  const total = confirmationOrderValue(record);
+  return {
+    status: record.status || "",
+    orderId: record.id || "",
+    phone: confirmationCustomerPhone(record),
+    updatedAt: record.updatedAt || "",
+    total: total > 0 ? String(total) : ""
+  };
+}
+
+function confirmationCustomerPhone(order = {}) {
+  return normalizeStoreNotifyNumber(
+    order.customer?.phone
+    || order.customerPhone
+    || order.phone
+    || order.telefone
+    || ""
+  );
+}
+
+function confirmationOrderValue(order = {}) {
+  const value = Number(
+    order.totals?.total
+    ?? order.total
+    ?? order.pricing?.total
+    ?? order.value
+    ?? 0
+  );
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function confirmedOrderCustomerMessage(confirmationUrl = "") {
+  return [
+    "🔥 *Seu pedido da BCK foi confirmado!*",
+    "",
+    "Ele ja foi encaminhado para a nossa esteira de preparo.",
+    "",
+    "Para acompanhar o status da producao do seu combo e visualizar a estimativa do tempo de entrega, toque no link oficial abaixo:",
+    `👉 ${confirmationUrl}`,
+    "",
+    "Obrigado por pedir na BCK Beer Chicken!"
+  ].join("\n");
+}
+
+function adminConfirmationReply(result = {}) {
+  if (result.status === "sent") {
+    return [
+      `Pedido ${result.orderId} confirmado.`,
+      "",
+      `Link enviado automaticamente para o cliente +${onlyDigits(result.customerPhone)}.`,
+      result.confirmationUrl || ""
+    ].filter(Boolean).join("\n");
+  }
+
+  if (result.status === "already_processed") {
+    return [
+      `Pedido ${result.orderId} ja estava confirmado para rastreamento.`,
+      result.sentAt ? `Link enviado em: ${new Date(result.sentAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}` : "",
+      result.confirmationUrl || ""
+    ].filter(Boolean).join("\n");
+  }
+
+  if (result.status === "order_not_found") {
+    return `Nao encontrei o pedido ${result.orderId}. Confira o codigo e envie de novo.`;
+  }
+
+  if (result.status === "customer_phone_missing") {
+    return `Nao consegui enviar o link do pedido ${result.orderId}: telefone do cliente nao encontrado.`;
+  }
+
+  if (result.status === "send_failed") {
+    return [
+      `Pedido ${result.orderId} foi marcado como confirmado, mas o envio automatico falhou.`,
+      "Confira token/Cloud API e tente o comando novamente.",
+      result.error ? `Erro: ${result.error}` : ""
+    ].filter(Boolean).join("\n");
+  }
+
+  return `Nao consegui processar o pedido ${result.orderId || ""}. Confira o codigo e tente novamente.`;
 }
 
 async function handleBibiMessage(message) {
@@ -1485,7 +1784,11 @@ function formatManualOrderNotification(customerPhone, orderText, orderRecord = n
 
 function customerConfirmationCopyLines(orderId = "") {
   const confirmationUrl = purchaseConfirmationUrl(orderId);
+  const protocol = String(orderId || "").trim();
   return [
+    protocol ? "COMANDO RAPIDO PARA CONFIRMAR:" : "",
+    protocol ? `Depois de conferir, responda neste WhatsApp: confirmar ${protocol}` : "",
+    protocol ? "" : "",
     "MENSAGEM PRONTA PARA ENVIAR AO CLIENTE:",
     "Use somente depois de confirmar valor, prazo, endereco e disponibilidade.",
     "",
@@ -1501,7 +1804,12 @@ function customerConfirmationCopyLines(orderId = "") {
 function purchaseConfirmationUrl(orderId = "") {
   const protocol = String(orderId || "").trim();
   const baseUrl = `${publicSiteUrl()}/obrigado`;
-  return protocol ? `${baseUrl}?pedido=${encodeURIComponent(protocol)}` : baseUrl;
+  const value = Number(arguments.length > 1 ? arguments[1] : 0);
+  const params = new URLSearchParams();
+  if (protocol) params.set("pedido", protocol);
+  if (Number.isFinite(value) && value > 0) params.set("valor", value.toFixed(2));
+  const query = params.toString();
+  return query ? `${baseUrl}?${query}` : baseUrl;
 }
 
 async function saveStoreNotificationLog({ type, to, customerPhone, orderId = "", sourceMessageId = "", body = "", sendResult = {} } = {}) {
@@ -4215,6 +4523,10 @@ if (process.env.NODE_ENV === "test") {
     isOrderDraft,
     isDraftCompletion,
     saveStoreNotificationLog,
-    saveStoreNotificationStatus
+    saveStoreNotificationStatus,
+    extractAdminConfirmationOrderId,
+    confirmOrderAndSendPurchaseLink,
+    confirmationCustomerPhone,
+    confirmationOrderValue
   };
 }

@@ -25,6 +25,25 @@
     <script src="config.js"></script>
     <script>
       (function () {
+        var googleAdsId = "AW-18132933431";
+        window.dataLayer = window.dataLayer || [];
+        if (typeof window.gtag !== "function") {
+          window.gtag = function gtag() {
+            window.dataLayer.push(arguments);
+          };
+          window.gtag("js", new Date());
+        }
+
+        var script = document.createElement("script");
+        script.async = true;
+        script.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(googleAdsId);
+        document.head.appendChild(script);
+
+        window.gtag("config", googleAdsId);
+      })();
+    </script>
+    <script>
+      (function () {
         var config = window.BCK_CONFIG || {};
         var pixelId = String((config.placeholders && config.placeholders.metaPixelId) || config.metaPixelId || "").trim();
         var isReadyPixel = pixelId && !pixelId.includes("XXXX") && !/^0+$/.test(pixelId);
@@ -205,10 +224,15 @@
         var orderId = params.get("pedido") || params.get("protocolo") || "";
         var valueText = params.get("valor") || params.get("value") || "";
         var parsedValue = parseMoney(valueText);
-        var value = Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : 0;
+        var storedValue = storedCartValue();
+        var value = Number.isFinite(parsedValue) && parsedValue > 0
+          ? parsedValue
+          : Number.isFinite(storedValue) && storedValue > 0
+            ? storedValue
+            : 1;
         var currency = (window.BCK_CONFIG && window.BCK_CONFIG.currency) || "BRL";
         var protocolEl = document.querySelector("[data-protocol]");
-        var eventId = "bck-purchase-whatsapp-" + (orderId || Date.now());
+        var eventId = "pur_" + (orderId || Date.now());
         var eventPayload = {
           currency: currency,
           value: value,
@@ -224,17 +248,42 @@
         }
 
         window.dataLayer = window.dataLayer || [];
-        window.dataLayer.push({
-          event: "Purchase_WhatsApp",
-          event_id: eventId,
-          order_id: orderId || undefined,
-          currency: currency,
-          value: value,
-          source: "obrigado_page"
-        });
+        if (orderId) {
+          window.dataLayer.push({
+            event: "Purchase_WhatsApp",
+            event_id: eventId,
+            order_id: orderId,
+            transaction_id: orderId,
+            currency: currency,
+            value: value,
+            source: "obrigado_page"
+          });
 
-        if (typeof window.fbq === "function") {
-          window.fbq("trackCustom", "Purchase_WhatsApp", eventPayload, { eventID: eventId });
+          if (typeof window.fbq === "function") {
+            window.fbq("trackCustom", "Purchase_WhatsApp", eventPayload, { eventID: eventId });
+          }
+
+          if (typeof window.gtag === "function") {
+            window.gtag("event", "conversion", {
+              send_to: "AW-18132933431/oImLCOfw6KUcELe2usZD",
+              value: value,
+              currency: currency,
+              transaction_id: orderId
+            });
+
+            window.gtag("event", "purchase", {
+              transaction_id: orderId,
+              value: value,
+              currency: currency
+            });
+          }
+        } else {
+          window.dataLayer.push({
+            event: "Purchase_WhatsApp_missing_order_id",
+            currency: currency,
+            value: value,
+            source: "obrigado_page"
+          });
         }
 
         document.addEventListener("click", function (event) {
@@ -263,6 +312,15 @@
             .replace(",", ".");
           var parsed = Number(normalized);
           return Number.isFinite(parsed) ? parsed : 0;
+        }
+
+        function storedCartValue() {
+          try {
+            var saved = localStorage.getItem("bck_cart_total") || sessionStorage.getItem("bck_cart_total") || "";
+            return parseMoney(saved);
+          } catch (error) {
+            return 0;
+          }
         }
       })();
     </script>

@@ -612,6 +612,18 @@ function saveLastOrder(order) {
   }
 }
 
+function saveCheckoutTrackingValue(order) {
+  const total = Number(order?.totals?.total);
+  if (!Number.isFinite(total) || total <= 0) return;
+
+  try {
+    localStorage.setItem("bck_cart_total", String(total));
+    sessionStorage.setItem("bck_cart_total", String(total));
+  } catch {
+    // Tracking value fallback should never block checkout.
+  }
+}
+
 async function submitOrderToApi(order) {
   const orderApiUrl = configuredOrderApiUrl();
   if (!orderApiUrl) return { skipped: true };
@@ -1336,6 +1348,7 @@ function submitOrder(event) {
 
   window.BCK_LAST_ORDER = order;
   saveLastOrder(order);
+  saveCheckoutTrackingValue(order);
   submitOrderToApiWithTimeout(order).then((result) => {
     window.BCK_LAST_ORDER_API_RESULT = result;
     applyOrderApiResult(order, result);

@@ -620,7 +620,11 @@ function formatCustomerLoyaltyMessage(order) {
 
 function customerConfirmationCopyLines(orderId = "") {
   const confirmationUrl = purchaseConfirmationUrl(orderId);
+  const protocol = String(orderId || "").trim();
   return [
+    protocol ? "COMANDO RAPIDO PARA CONFIRMAR:" : "",
+    protocol ? `Depois de conferir, responda neste WhatsApp: confirmar ${protocol}` : "",
+    protocol ? "" : "",
     "MENSAGEM PRONTA PARA ENVIAR AO CLIENTE:",
     "Use somente depois de confirmar valor, prazo, endereco e disponibilidade.",
     "",
