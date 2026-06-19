@@ -18,7 +18,7 @@ const SITE_FALLBACK = "https://beerchicken-bck.netlify.app";
 const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
 const CITY = process.env.BCK_CITY || "Cachoeiro";
 const MAPS_CITY = process.env.BCK_MAPS_CITY || "Cachoeiro de Itapemirim - ES";
-const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Todos os dias, das 17h as 00h";
+const DEFAULT_HOURS = process.env.BCK_OPERATING_HOURS || "Segunda a quinta, das 17h as 00h";
 const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
@@ -29,9 +29,12 @@ const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true"
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-19-humanized-bibi-v1";
+const BIBI_VERSION = "2026-06-19-weekend-redirect-v1";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
+const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
+const MINISITE_OPEN_DAYS_LABEL = process.env.BCK_MINISITE_OPEN_DAYS_LABEL || "segunda a quinta";
+const MINISITE_CLOSED_WEEKDAYS = normalizeWeekdayKeys(process.env.BCK_MINISITE_CLOSED_WEEKDAYS || "fri,sat,sun");
 const SERVICE_MODES = {
   ATTENDANT: "atendente",
   SELLER: "vendedora",
@@ -132,6 +135,9 @@ exports.handler = async function handler(event) {
         ok: true,
         version: BIBI_VERSION,
         storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677"),
+        mainOrderSiteUrl: MAIN_ORDER_SITE_URL,
+        miniSiteOpenDays: MINISITE_OPEN_DAYS_LABEL,
+        miniSiteClosedToday: isMiniSiteClosedToday(),
         aiInterpreterEnabled: AI_INTERPRETER_ENABLED,
         aiInterpreterModel: AI_INTERPRETER_MODEL,
         aiInterpreterAccess: hasAIInterpreterAccess(),
@@ -687,6 +693,9 @@ async function handleMenuState({ message, session, rawText, text, siteUrl }) {
   if (text.startsWith("__unsupported__")) {
     return withSession(session, unsupportedMediaReply());
   }
+  if (isMiniSiteClosedToday() && shouldRedirectClosedMiniSite(text)) {
+    return withSession(menuSession(), miniSiteClosedReply());
+  }
   const menuOrderStart = looksLikeOrderStart(text);
   const serviceMode = classifyServiceMode(text, session);
 
@@ -798,6 +807,12 @@ async function handleCollectingState({ message, session, rawText, text, siteUrl 
     return withSession(next, currentOrderStatusReply(next.data));
   }
 
+  if (isMiniSiteClosedToday()) {
+    const menu = menuSession();
+    logStateChanged(message.from, session.state, menu.state, "minisite_closed_redirect");
+    return withSession(menu, miniSiteClosedReply());
+  }
+
   if (!next.data.items.length && serviceMode === SERVICE_MODES.SELLER) {
     return withSession(next, sellerGuidanceReply(siteUrl, text));
   }
@@ -866,6 +881,12 @@ async function handleConfirmingState({ message, session, rawText, text, siteUrl 
 
   if (isOrderStatusRequest(text)) {
     return withSession(session, confirmationReply(session.data));
+  }
+
+  if (isMiniSiteClosedToday()) {
+    const menu = menuSession();
+    logStateChanged(message.from, session.state, menu.state, "minisite_closed_redirect");
+    return withSession(menu, miniSiteClosedReply());
   }
 
   if (isPositiveConfirmation(text)) {
@@ -1057,6 +1078,10 @@ function buildAutoReply(message) {
   const offersUrl = `${siteUrl}#catalogo`;
   const comboUrl = `${siteUrl}#monte-seu-combo`;
   const checkoutUrl = `${siteUrl}#checkout`;
+
+  if (isMiniSiteClosedToday() && shouldRedirectClosedMiniSite(text)) {
+    return miniSiteClosedReply();
+  }
 
   if (text.startsWith("__unsupported__")) {
     return [
@@ -1292,6 +1317,29 @@ function buildAutoReply(message) {
   return mainMenu(siteUrl);
 }
 
+function shouldRedirectClosedMiniSite(text = "") {
+  if (!text) return true;
+  if (isChoice(text, "5") || isHumanRequest(text)) return false;
+  if (isOrderStatusRequest(text)) return false;
+  if (isCancelRequest(text)) return false;
+  return true;
+}
+
+function miniSiteClosedReply() {
+  return [
+    `${currentGreeting()}! Hoje o mini site de promocoes da BCK esta fechado.`,
+    "",
+    `Ele funciona de ${MINISITE_OPEN_DAYS_LABEL}.`,
+    "Na sexta, sabado e domingo, o atendimento segue pelos canais oficiais.",
+    "",
+    "Para pedir ou falar com a equipe agora:",
+    `WhatsApp oficial: ${officialStoreWhatsAppLink("Oi, BCK! Vim pelo mini site e quero atendimento.")}`,
+    `Site principal: ${MAIN_ORDER_SITE_URL}`,
+    "",
+    "A equipe confirma valores, disponibilidade e prazo por la."
+  ].join("\n");
+}
+
 function mainMenu(siteUrl) {
   return [
     `${currentGreeting()}, eu sou a ${AI_ASSISTANT_NAME}, atendente virtual da ${STORE_NAME}.`,
@@ -1446,6 +1494,14 @@ function humanReply(notified = true) {
   ];
 
   return lines.join("\n");
+}
+
+function officialStoreWhatsAppLink(message = "") {
+  const officialNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const text = String(message || "").trim();
+  return text
+    ? `https://wa.me/${officialNumber}?text=${encodeURIComponent(text)}`
+    : `https://wa.me/${officialNumber}`;
 }
 
 function repeatOrderReply(siteUrl) {
@@ -4015,6 +4071,65 @@ function normalize(value = "") {
     .trim();
 }
 
+function normalizeWeekdayKeys(value = []) {
+  const map = {
+    sun: "sun",
+    sunday: "sun",
+    domingo: "sun",
+    mon: "mon",
+    monday: "mon",
+    segunda: "mon",
+    tue: "tue",
+    tuesday: "tue",
+    terca: "tue",
+    terça: "tue",
+    wed: "wed",
+    wednesday: "wed",
+    quarta: "wed",
+    thu: "thu",
+    thursday: "thu",
+    quinta: "thu",
+    fri: "fri",
+    friday: "fri",
+    sexta: "fri",
+    sat: "sat",
+    saturday: "sat",
+    sabado: "sat",
+    sábado: "sat"
+  };
+  const list = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\s,;]+/);
+
+  return [...new Set(list
+    .map((item) => map[normalize(item)])
+    .filter(Boolean))];
+}
+
+function currentSaoPauloWeekdayKey(date = new Date()) {
+  try {
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "short"
+    }).format(date).toLowerCase().slice(0, 3);
+    return {
+      sun: "sun",
+      mon: "mon",
+      tue: "tue",
+      wed: "wed",
+      thu: "thu",
+      fri: "fri",
+      sat: "sat"
+    }[weekday] || "sun";
+  } catch {
+    return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][date.getDay()] || "sun";
+  }
+}
+
+function isMiniSiteClosedToday(date = new Date()) {
+  return MINISITE_CLOSED_WEEKDAYS.includes(currentSaoPauloWeekdayKey(date));
+}
+
 function currentGreeting() {
   try {
     const hourText = new Intl.DateTimeFormat("pt-BR", {
@@ -4586,6 +4701,8 @@ if (process.env.NODE_ENV === "test") {
     lookupCepAddress,
     orderMapLinks,
     parseChangeAnswer,
+    isMiniSiteClosedToday,
+    miniSiteClosedReply,
     askMissingFieldsReply,
     isPriceOrValueQuestion,
     mergeRuleAndAIOrderData,

@@ -168,7 +168,7 @@ function normalizeSchedule(settings = {}) {
     closedLabel: settings.closedLabel || "Fechado agora",
     blockCheckoutWhenClosed: settings.blockCheckoutWhenClosed !== false,
     closedCheckoutMessage: settings.closedCheckoutMessage
-      || "A BCK esta fechada neste horario. Voce pode montar o carrinho, mas o envio do pedido abre no proximo horario de atendimento.",
+      || "O mini site recebe pedidos de segunda a quinta. Na sexta, sabado e domingo, peca pelo WhatsApp oficial (28) 99932-9677 ou pelo site www.pizzariabck.com.br.",
     closedDates: normalizeClosedDates(settings.closedDates),
     days: DEFAULT_SCHEDULE_DAYS.map((fallback) => normalizeScheduleDay(daysByKey.get(fallback.key), fallback))
   };
@@ -197,6 +197,41 @@ function normalizeClosedDates(value = []) {
     .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item)))];
 }
 
+function normalizeClosedWeekdays(value = []) {
+  const map = {
+    sun: "sun",
+    sunday: "sun",
+    domingo: "sun",
+    mon: "mon",
+    monday: "mon",
+    segunda: "mon",
+    tue: "tue",
+    tuesday: "tue",
+    terca: "tue",
+    terça: "tue",
+    wed: "wed",
+    wednesday: "wed",
+    quarta: "wed",
+    thu: "thu",
+    thursday: "thu",
+    quinta: "thu",
+    fri: "fri",
+    friday: "fri",
+    sexta: "fri",
+    sat: "sat",
+    saturday: "sat",
+    sabado: "sat",
+    sábado: "sat"
+  };
+  const list = Array.isArray(value)
+    ? value
+    : String(value || "").split(/[\s,;]+/);
+
+  return [...new Set(list
+    .map((item) => map[String(item || "").trim().toLowerCase()])
+    .filter(Boolean))];
+}
+
 function applyScheduleOverrides(schedule) {
   const overrides = config.automation?.scheduleOverrides || {};
   const closedDates = normalizeClosedDates([
@@ -204,13 +239,16 @@ function applyScheduleOverrides(schedule) {
     ...(overrides.closedDates || [])
   ]);
   const businessDaysOnly = Boolean(overrides.businessDaysOnly);
+  const closedWeekdays = normalizeClosedWeekdays(overrides.closedWeekdays || []);
 
   return {
     ...schedule,
     closedDates,
     days: schedule.days.map((day) => ({
       ...day,
-      open: businessDaysOnly && (day.key === "sun" || day.key === "sat") ? false : day.open
+      open: (businessDaysOnly && (day.key === "sun" || day.key === "sat")) || closedWeekdays.includes(day.key)
+        ? false
+        : day.open
     }))
   };
 }
@@ -1622,8 +1660,8 @@ function renderScheduleStatus() {
       els.hoursNote.textContent = `Pedidos pelo site ate ${formatTimeLabel(status.activeDay.cutoffTime)}. A equipe confirma pelo WhatsApp.`;
     } else {
       els.hoursNote.textContent = status.next?.text
-        ? `${status.next.text}. Voce ainda pode montar o carrinho.`
-        : "Voce ainda pode montar o carrinho, mas o envio do pedido esta fechado.";
+        ? `${status.next.text}. Fora do horario do mini site, use o WhatsApp oficial ou www.pizzariabck.com.br.`
+        : "Mini site fechado agora. Use o WhatsApp oficial ou www.pizzariabck.com.br.";
     }
   }
 

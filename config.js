@@ -25,9 +25,10 @@ window.BCK_CONFIG = {
   automation: {
     enabled: true,
     orderPrefix: "BCK",
-    operatingHours: "Segunda a sexta, das 17h as 00h",
+    operatingHours: "Segunda a quinta, das 17h as 00h",
     scheduleOverrides: {
       businessDaysOnly: true,
+      closedWeekdays: ["fri", "sat", "sun"],
       closedDates: ["2026-06-19"]
     },
     estimatedPrepMinutes: 35,
