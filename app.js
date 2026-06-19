@@ -1282,19 +1282,6 @@ function submitOrder(event) {
     checkoutWindow.document.body.innerHTML = "<p style=\"font-family: sans-serif; padding: 24px;\">Preparando pedido BCK...</p>";
   }
 
-  trackEvent("purchase", {
-    transaction_id: order.id,
-    value: order.totals.total,
-    ecommerce: {
-      items: order.items.map((item) => ({
-        item_id: item.id,
-        item_name: item.title,
-        price: item.unitPrice,
-        quantity: item.quantity
-      }))
-    }
-  });
-
   trackEvent("lead", {
     value: order.totals.total,
     payment_type: order.payment
