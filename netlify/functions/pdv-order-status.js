@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const PDV_QUEUE_STORE = "bck-pdv-queue";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
 const SITE_ORDERS_STORE = "bck-orders";
-const FINAL_STATUSES = new Set(["RECEBIDO", "IMPRESSO", "FINALIZADO"]);
+const FINAL_STATUSES = new Set(["RECEBIDO", "IMPRESSO", "FINALIZADO", "CANCELADO"]);
 
 exports.handler = async function handler(event) {
   if (event.httpMethod === "OPTIONS") {
@@ -93,16 +93,20 @@ async function updateQueueStatus({ orderId, status, payload }) {
   if (status === "ERRO") {
     await store.setJSON(errorKey, updated, { metadata });
     await store.delete(pendingKey);
+    await store.delete(processedKey);
     return { ok: true, store: PDV_QUEUE_STORE, movedTo: "errors" };
   }
 
   if (FINAL_STATUSES.has(status)) {
     await store.setJSON(processedKey, updated, { metadata });
     await store.delete(pendingKey);
+    await store.delete(errorKey);
     return { ok: true, store: PDV_QUEUE_STORE, movedTo: "processed" };
   }
 
   await store.setJSON(pendingKey, updated, { metadata });
+  await store.delete(processedKey);
+  await store.delete(errorKey);
   return { ok: true, store: PDV_QUEUE_STORE, movedTo: "pending" };
 }
 
@@ -123,7 +127,7 @@ function withPdvSync(record, status, payload) {
   const now = new Date().toISOString();
   return {
     ...record,
-    updatedAt: record.updatedAt || now,
+    updatedAt: now,
     pdvSync: {
       ...(record.pdvSync || {}),
       status,

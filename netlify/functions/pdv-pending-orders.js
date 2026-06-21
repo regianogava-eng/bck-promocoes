@@ -9,6 +9,7 @@ const PDV_QUEUE_STORE = "bck-pdv-queue";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
 const SITE_ORDERS_STORE = "bck-orders";
 const DEFAULT_SYNC_START_AT = "2026-06-20T00:00:00-03:00";
+const DEFAULT_SCAN_LIMIT = 500;
 const FINAL_STATUSES = new Set(["RECEBIDO", "IMPRESSO", "FINALIZADO", "CANCELADO", "ERRO"]);
 
 exports.handler = async function handler(event) {
@@ -27,12 +28,13 @@ exports.handler = async function handler(event) {
 
   const limitRaw = Number(event.queryStringParameters?.limit || 25);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.round(limitRaw), 1), 50) : 25;
+  const scanLimit = normalizedScanLimit(event.queryStringParameters?.scanLimit, limit);
 
   try {
     const [queueOrders, bibiOrders, siteOrders] = await Promise.all([
-      readQueueOrders(limit),
-      readSourceOrders(BIBI_ORDERS_STORE, bibiOrderToPdvOrder, limit),
-      readSourceOrders(SITE_ORDERS_STORE, siteOrderToPdvOrder, limit)
+      readQueueOrders(limit, scanLimit),
+      readSourceOrders(BIBI_ORDERS_STORE, bibiOrderToPdvOrder, limit, scanLimit),
+      readSourceOrders(SITE_ORDERS_STORE, siteOrderToPdvOrder, limit, scanLimit)
     ]);
 
     const byId = new Map();
@@ -51,6 +53,7 @@ exports.handler = async function handler(event) {
       ok: true,
       count: orders.length,
       syncStartAt: syncStartAtIso(),
+      scanLimit,
       orders
     });
   } catch (error) {
@@ -62,23 +65,24 @@ exports.handler = async function handler(event) {
   }
 };
 
-async function readQueueOrders(limit) {
+async function readQueueOrders(limit, scanLimit) {
   const store = await getBlobStore(PDV_QUEUE_STORE);
   const listed = await store.list({ prefix: "pending/" });
-  return readListedOrders(store, listed, (order) => order, limit);
+  return readListedOrders(store, listed, (order) => order, limit, scanLimit);
 }
 
-async function readSourceOrders(storeName, mapper, limit) {
+async function readSourceOrders(storeName, mapper, limit, scanLimit) {
   const store = await getBlobStore(storeName);
   const listed = await store.list({ prefix: "orders/" });
-  return readListedOrders(store, listed, mapper, limit);
+  return readListedOrders(store, listed, mapper, limit, scanLimit);
 }
 
-async function readListedOrders(store, listed, mapper, limit) {
+async function readListedOrders(store, listed, mapper, limit, scanLimit) {
   const blobs = Array.isArray(listed?.blobs) ? listed.blobs : [];
+  const candidates = newestBlobCandidates(blobs, Math.max(limit * 10, scanLimit));
   const orders = [];
 
-  for (const blob of blobs.slice(0, Math.max(limit * 4, limit))) {
+  for (const blob of candidates) {
     const key = blob.key || blob.name;
     if (!key) continue;
 
@@ -97,6 +101,13 @@ async function readListedOrders(store, listed, mapper, limit) {
   }
 
   return orders;
+}
+
+function newestBlobCandidates(blobs, scanLimit) {
+  return [...blobs]
+    .filter((blob) => blob?.key || blob?.name)
+    .sort((a, b) => String(b.key || b.name || "").localeCompare(String(a.key || a.name || "")))
+    .slice(0, scanLimit);
 }
 
 function bibiOrderToPdvOrder(order = {}) {
@@ -259,6 +270,12 @@ function isAfterSyncStart(order = {}) {
 
 function syncStartAtIso() {
   return process.env.BCK_PDV_SYNC_START_AT || DEFAULT_SYNC_START_AT;
+}
+
+function normalizedScanLimit(value, limit) {
+  const raw = Number(value || process.env.BCK_PDV_SCAN_LIMIT || DEFAULT_SCAN_LIMIT);
+  if (!Number.isFinite(raw)) return Math.max(DEFAULT_SCAN_LIMIT, limit * 10);
+  return Math.min(Math.max(Math.round(raw), limit * 10, 50), 2000);
 }
 
 function paymentTextFromBibi(order = {}) {
