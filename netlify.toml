@@ -5,6 +5,16 @@
 [functions]
   directory = "netlify/functions"
 
+[[redirects]]
+  from = "/api/pdv/pedidos-pendentes"
+  to = "/.netlify/functions/pdv-pending-orders"
+  status = 200
+
+[[redirects]]
+  from = "/api/pdv/pedido-status"
+  to = "/.netlify/functions/pdv-order-status"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
