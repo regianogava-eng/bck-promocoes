@@ -290,10 +290,13 @@ function orderHistoryRecord(order, phone, month) {
     month,
     customerName: order.customer.name || "",
     customerPhone: order.customer.phone || "",
+    customerAddress: order.customer.address || "",
+    customerNotes: order.customer.notes || "",
     createdAt: order.createdAt || order.receivedAt || new Date().toISOString(),
     receivedAt: order.receivedAt || new Date().toISOString(),
     total: Number(order.totals.total) || 0,
     subtotal: Number(order.totals.subtotal) || 0,
+    deliveryFee: Number(order.totals.deliveryFee) || 0,
     payment: order.payment || "",
     itemCount: Array.isArray(order.items)
       ? order.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0)
@@ -305,7 +308,9 @@ function orderHistoryRecord(order, phone, month) {
           title: item.title,
           quantity: Number(item.quantity) || 0,
           subtotal: Number(item.subtotal) || 0,
-          components: Array.isArray(item.components) ? item.components : []
+          unitPrice: Number(item.unitPrice || item.price) || 0,
+          components: Array.isArray(item.components) ? item.components : [],
+          notes: item.notes || ""
         }))
       : []
   };
