@@ -9,8 +9,14 @@
 
   if (window.__BCK_META_CAPI_BRIDGE__) return;
   window.__BCK_META_CAPI_BRIDGE__ = true;
+  markBridgeState("loaded");
 
-  if (CONFIG.allowedHosts.indexOf(window.location.hostname) === -1) return;
+  if (CONFIG.allowedHosts.indexOf(window.location.hostname) === -1) {
+    markBridgeState("blocked_host");
+    return;
+  }
+
+  markBridgeState("ready");
 
   interceptDataLayer();
   waitForFbq();
@@ -246,6 +252,14 @@
 
   function objectOrEmpty(value) {
     return value && typeof value === "object" ? value : {};
+  }
+
+  function markBridgeState(state) {
+    try {
+      document.documentElement.setAttribute("data-bck-capi-bridge", state);
+    } catch (error) {
+      // Status marker only.
+    }
   }
 
   function logDebug() {
