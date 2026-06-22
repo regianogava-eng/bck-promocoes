@@ -62,6 +62,12 @@ BCK_STORE_NOTIFY_NUMBER=5528999329677
 SITE_URL=https://beerchicken-bck.netlify.app
 ORDER_WEBHOOK_URL=
 META_APP_SECRET=
+BCK_META_CAPI_ENABLED=false
+BCK_META_PIXEL_ID=746956188164996
+BCK_META_CAPI_ACCESS_TOKEN=
+BCK_META_CAPI_ALLOWED_ORIGINS=https://www.pizzariabck.com.br,https://pizzariabck.com.br,https://beerchicken-bck.netlify.app
+BCK_META_CAPI_API_VERSION=v25.0
+BCK_META_CAPI_TEST_EVENT_CODE=
 BCK_OPERATING_HOURS=Todos os dias, das 17h as 00h
 BCK_AI_ASSISTANT_NAME=Bibi
 BCK_AI_ASSISTANT_KEYWORD=BIBI
@@ -84,6 +90,25 @@ O link do WhatsApp Manager informado usa este asset/WABA:
 ```text
 WHATSAPP_WABA_ID=2235684346968129
 ```
+
+## Ponte Meta CAPI para Purchase do ChefMio
+
+Esta ponte foi preparada para enviar `Purchase` por CAPI sem criar um segundo evento solto. Ela so envia quando o evento do navegador ja tiver `event_id`.
+
+- Funcao Netlify: `/api/meta-capi/purchase`
+- Script publico: `/assets/chefmio-meta-capi-bridge.js`
+- Pixel oficial: `746956188164996`
+- Trava principal: `BCK_META_CAPI_ENABLED=false` por padrao
+
+Para ativar em producao, configure o token CAPI no Netlify, teste com `BCK_META_CAPI_TEST_EVENT_CODE`, confirme no Gerenciador de Eventos que o evento chega como navegador + servidor com o mesmo `event_id`, e so entao altere `BCK_META_CAPI_ENABLED=true`.
+
+Script a inserir no campo JS global do ChefMio, depois do deploy deste projeto:
+
+```html
+<script src="https://beerchicken-bck.netlify.app/assets/chefmio-meta-capi-bridge.js" defer></script>
+```
+
+Nao instale outro Pixel e nao crie outra tag de `Purchase` no ChefMio. O script acima apenas observa o `Purchase` existente e ignora qualquer compra sem `event_id`.
 
 ### Diagnostico de WABA / numero pendente
 
