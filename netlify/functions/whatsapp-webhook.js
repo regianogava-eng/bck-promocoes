@@ -27,9 +27,13 @@ const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
 const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-mini";
+const AI_DIRECT_ENABLED = process.env.BCK_AI_DIRECT_ENABLED !== "false";
+const AI_DIRECT_MODEL = process.env.BCK_AI_DIRECT_MODEL || AI_INTERPRETER_MODEL;
+const AI_DIRECT_STATE = "AI_DIRECT";
+const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge();
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-19-weekend-redirect-v1";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v1";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -138,6 +142,8 @@ exports.handler = async function handler(event) {
         mainOrderSiteUrl: MAIN_ORDER_SITE_URL,
         miniSiteOpenDays: MINISITE_OPEN_DAYS_LABEL,
         miniSiteClosedToday: isMiniSiteClosedToday(),
+        aiDirectEnabled: AI_DIRECT_ENABLED,
+        aiDirectModel: AI_DIRECT_MODEL,
         aiInterpreterEnabled: AI_INTERPRETER_ENABLED,
         aiInterpreterModel: AI_INTERPRETER_MODEL,
         aiInterpreterAccess: hasAIInterpreterAccess(),
@@ -331,8 +337,9 @@ function messageText(item) {
 }
 
 async function handleAdminConfirmationCommand(message) {
-  const orderId = extractAdminConfirmationOrderId(message.text);
-  if (!orderId) {
+  let orderId = extractAdminConfirmationOrderId(message.text);
+  const quickOk = isStoreQuickConfirmationText(message.text);
+  if (!orderId && !quickOk) {
     return { handled: false };
   }
 
@@ -340,11 +347,27 @@ async function handleAdminConfirmationCommand(message) {
   const storeNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
 
   if (!storeNumber || fromNumber !== storeNumber) {
+    if (quickOk && !orderId) {
+      return { handled: false };
+    }
+
     console.warn("BCK_ADMIN_COMMAND_DENIED", JSON.stringify({
       from: maskPhone(message.from),
       orderId
     }));
     return { handled: true, reason: "admin_command_unauthorized", replyText: "" };
+  }
+
+  if (!orderId && quickOk) {
+    orderId = await findLatestPendingBibiOrderId();
+  }
+
+  if (!orderId) {
+    return {
+      handled: true,
+      reason: "latest_pending_order_not_found",
+      replyText: "Nao encontrei pedido pendente para confirmar com OK. Envie: confirmar BIBI-..."
+    };
   }
 
   console.log("BCK_ADMIN_CONFIRM_COMMAND", JSON.stringify({
@@ -361,8 +384,43 @@ async function handleAdminConfirmationCommand(message) {
 }
 
 function extractAdminConfirmationOrderId(text = "") {
-  const match = String(text || "").trim().match(/^confirmar\s+((?:BCK|BIBI)-[\w-]+)/i);
+  const match = String(text || "").trim().match(/^(?:confirmar|ok|confirmado)\s+((?:BCK|BIBI)-[\w-]+)/i);
   return match ? match[1].toUpperCase() : "";
+}
+
+function isStoreQuickConfirmationText(text = "") {
+  const value = normalize(text);
+  return ["ok", "confirmar", "confirmado", "pode confirmar"].includes(value);
+}
+
+async function findLatestPendingBibiOrderId() {
+  try {
+    const store = await getBlobStore(BIBI_ORDERS_STORE);
+    const list = await store.list({ prefix: "orders/" });
+    const blobs = Array.isArray(list?.blobs) ? list.blobs.slice(-30) : [];
+    let latest = null;
+
+    for (const blob of blobs) {
+      const key = blob.key || "";
+      if (!key) continue;
+      const record = await store.get(key, { consistency: "strong", type: "json" });
+      if (!record || record.status !== BIBI_PENDING_ORDER_STATUS) continue;
+      const createdAt = Date.parse(record.createdAt || record.updatedAt || "");
+      if (!latest || createdAt > latest.createdAt) {
+        latest = {
+          id: record.id || key.replace(/^orders\//, ""),
+          createdAt: Number.isFinite(createdAt) ? createdAt : 0
+        };
+      }
+    }
+
+    return latest?.id || "";
+  } catch (error) {
+    console.error("BCK_ADMIN_LATEST_PENDING_LOOKUP_ERROR", JSON.stringify({
+      message: error?.message || String(error)
+    }));
+    return "";
+  }
 }
 
 async function confirmOrderAndSendPurchaseLink(orderId = "") {
@@ -608,6 +666,10 @@ function adminConfirmationReply(result = {}) {
 }
 
 async function handleBibiMessage(message) {
+  if (AI_DIRECT_ENABLED) {
+    return handleBibiDirectAIMessage(message);
+  }
+
   const rawText = String(message.text || "").trim();
   const text = normalize(rawText);
   const siteUrl = publicSiteUrl();
@@ -687,6 +749,631 @@ async function handleBibiMessage(message) {
     reason: result.reason || null,
     state: result.session?.state || session.state
   };
+}
+
+async function handleBibiDirectAIMessage(message) {
+  const rawText = String(message.text || "").trim();
+  const text = normalize(rawText);
+  let session = await getConversationSession(message.from);
+  session = expireSessionIfNeeded(session);
+
+  console.log("BCK_BIBI_AI_DIRECT_MESSAGE", JSON.stringify({
+    phone: maskPhone(message.from),
+    state: session.state,
+    chars: rawText.length,
+    source: "whatsapp_direct"
+  }));
+
+  if (isUnsupportedIncomingText(text)) {
+    return {
+      replyText: unsupportedMediaReply(),
+      reason: "unsupported_media",
+      state: session.state
+    };
+  }
+
+  if (shouldResetConversation(text) || isOrderStartRequest(text)) {
+    session = directAISession(emptyDirectAIData(), "reset_or_new_order");
+  }
+
+  if (session.state === STATES.FORWARDED && !shouldResetConversation(text) && !isOrderStartRequest(text)) {
+    return {
+      replyText: [
+        "Esse pedido ja foi encaminhado para a equipe conferir.",
+        "",
+        "Se quiser fazer outro pedido, me mande: *novo pedido*."
+      ].join("\n"),
+      reason: "already_forwarded",
+      state: STATES.FORWARDED
+    };
+  }
+
+  if (session.state !== AI_DIRECT_STATE) {
+    session = directAISession(emptyDirectAIData(), "start_ai_direct");
+  }
+
+  const data = normalizeDirectAIData(session.data);
+
+  if (isCancelRequest(text)) {
+    await deleteConversationSession(message.from);
+    return {
+      replyText: "Sem problemas! Quando quiser pedir, e so me chamar.",
+      reason: "cancelled",
+      state: STATES.MENU
+    };
+  }
+
+  if (isHumanRequest(text)) {
+    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    const next = forwardedSession(directAIOrderToLegacyOrder(data.order), "human_requested_ai_direct");
+    await saveConversationSession(message.from, next);
+    return {
+      replyText: teamNotification.ok
+        ? "Vou chamar alguem da nossa equipe no balcao para assumir aqui, um minutinho!"
+        : "Vou chamar alguem da nossa equipe para assumir aqui, um minutinho!",
+      reason: "human_requested",
+      state: next.state
+    };
+  }
+
+  if (data.awaitingCustomerConfirmation) {
+    if (isPositiveConfirmation(text)) {
+      return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
+    }
+
+    if (isChangeRequest(text)) {
+      const nextData = {
+        ...data,
+        awaitingCustomerConfirmation: false
+      };
+      await saveConversationSession(message.from, directAISession(nextData, "customer_wants_change"));
+      return {
+        replyText: "Claro. Me fala o que voce quer mudar: item, sabor, fatias, endereco ou pagamento?",
+        reason: "customer_wants_change",
+        state: AI_DIRECT_STATE
+      };
+    }
+  }
+
+  const aiResult = await createDirectAIReply(rawText, data);
+  const nextData = normalizeDirectAIData({
+    ...data,
+    order: aiResult.order || data.order,
+    history: appendDirectHistory(data.history, rawText, aiResult.reply),
+    awaitingCustomerConfirmation: false
+  });
+  const missing = directAIOrderMissing(nextData.order);
+
+  if (aiResult.needsHuman) {
+    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    const next = forwardedSession(directAIOrderToLegacyOrder(nextData.order), "ai_requested_human");
+    await saveConversationSession(message.from, next);
+    return {
+      replyText: teamNotification.ok
+        ? "Vou chamar alguem da nossa equipe no balcao para assumir aqui, um minutinho!"
+        : "Vou chamar alguem da nossa equipe para assumir aqui, um minutinho!",
+      reason: "ai_requested_human",
+      state: next.state
+    };
+  }
+
+  if (aiResult.readyForTeam && missing.length === 0) {
+    const confirmData = {
+      ...nextData,
+      awaitingCustomerConfirmation: true
+    };
+    await saveConversationSession(message.from, directAISession(confirmData, "awaiting_customer_confirmation"));
+    return {
+      replyText: directAIConfirmationQuestion(nextData.order),
+      reason: "awaiting_customer_confirmation",
+      state: AI_DIRECT_STATE
+    };
+  }
+
+  const replyText = missing.length && aiResult.readyForTeam
+    ? directAIMissingQuestion(nextData.order, missing)
+    : cleanDirectAIReply(aiResult.reply) || directAIMissingQuestion(nextData.order, missing);
+
+  await saveConversationSession(message.from, directAISession(nextData, "ai_direct_collecting"));
+  return {
+    replyText,
+    reason: "ai_direct_reply",
+    state: AI_DIRECT_STATE
+  };
+}
+
+async function createDirectAIReply(rawText = "", data = emptyDirectAIData()) {
+  const current = normalizeDirectAIData(data);
+  if (!hasAIInterpreterAccess()) {
+    return directAIFallbackReply(rawText, current);
+  }
+
+  const requestBody = {
+    model: AI_DIRECT_MODEL,
+    instructions: directAIInstructions(),
+    input: JSON.stringify({
+      source: "whatsapp_direct",
+      currentOrder: current.order,
+      awaitingCustomerConfirmation: current.awaitingCustomerConfirmation,
+      recentHistory: current.history,
+      customerMessage: String(rawText || "").slice(0, 1400),
+      menuKnowledge: AI_DIRECT_MENU_KNOWLEDGE
+    }),
+    text: {
+      format: {
+        type: "json_schema",
+        name: "bhibi_whatsapp_direct_reply",
+        strict: true,
+        schema: DIRECT_AI_REPLY_SCHEMA
+      }
+    },
+    max_output_tokens: 900
+  };
+
+  try {
+    const body = await createAIResponse(requestBody);
+    const text = openAIResponseText(body);
+    if (!text) throw new Error("ai_direct_empty_response");
+    const parsed = JSON.parse(text);
+    return sanitizeDirectAIResult(parsed);
+  } catch (error) {
+    console.error("BCK_BIBI_AI_DIRECT_FAILED", JSON.stringify({
+      source: aiCredentialSource(),
+      message: error?.message || String(error)
+    }));
+    return directAIFallbackReply(rawText, current);
+  }
+}
+
+function directAIInstructions() {
+  return [
+    "Voce e Bhibi, atendente virtual oficial da BCK Beer Chicken no WhatsApp direto.",
+    "Este atendimento e direto no numero da pizzaria. Nao empurre o cliente para o mini site.",
+    "Fale em portugues brasileiro, tom curto, acolhedor e agil. Use poucas mensagens e nada de textao.",
+    "Responda duvidas reais do cliente antes de continuar o pedido.",
+    "Nunca peca nome, endereco ou pagamento antes de saber o item principal completo.",
+    "Para pizza, item completo exige sabor e numero exato de fatias.",
+    "Se o cliente usar menor, pequena, broto, grande, gigante, familia, maracana, normal ou tamanho padrao, pergunte quantas fatias. Opcoes: 2, 4, 6, 8, 10, 12 ou 16.",
+    "Se disser menor, ofereca 2, 4 ou 6 fatias e pergunte qual deseja.",
+    "Nunca salve 'quero menor', 'pizza', 'cartao' ou endereco como nome do cliente.",
+    "Se o cliente pedir cardapio, mostre uma lista curta e ofereca continuar por partes.",
+    "Use somente precos presentes no menuKnowledge. Se o preco for R$ 0,00, diga que a equipe precisa conferir.",
+    "Nao invente taxa, prazo, disponibilidade, horario, regiao atendida, desconto ou brinde.",
+    "Quando o pedido estiver completo, readyForTeam deve ser true, mas ainda nao diga que esta confirmado.",
+    "Pedido completo precisa ter item completo, nome, tipo entrega/retirada, endereco se entrega, pagamento e troco se dinheiro.",
+    "Retorne sempre o pedido atualizado inteiro no JSON. Se nao souber um campo, use string vazia.",
+    "A resposta para o cliente deve ter no maximo 600 caracteres."
+  ].join(" ");
+}
+
+const DIRECT_AI_REPLY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reply", "intent", "order", "readyForTeam", "needsHuman", "confidence"],
+  properties: {
+    reply: { type: "string" },
+    intent: {
+      type: "string",
+      enum: ["greeting", "menu_question", "order_collecting", "order_ready", "human_request", "cancel", "other"]
+    },
+    order: {
+      type: "object",
+      additionalProperties: false,
+      required: ["customerName", "fulfillment", "address", "payment", "changeFor", "notes", "items"],
+      properties: {
+        customerName: { type: "string" },
+        fulfillment: { type: "string", enum: ["", "entrega", "retirada", "local"] },
+        address: { type: "string" },
+        payment: { type: "string", enum: ["", "pix", "cartao", "dinheiro", "vale"] },
+        changeFor: { type: "string" },
+        notes: { type: "string" },
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["category", "name", "quantity", "size", "slices", "price", "extras", "notes"],
+            properties: {
+              category: { type: "string" },
+              name: { type: "string" },
+              quantity: { type: "number" },
+              size: { type: "string" },
+              slices: { type: "string" },
+              price: { type: "string" },
+              extras: { type: "string" },
+              notes: { type: "string" }
+            }
+          }
+        }
+      }
+    },
+    readyForTeam: { type: "boolean" },
+    needsHuman: { type: "boolean" },
+    confidence: { type: "number", minimum: 0, maximum: 1 }
+  }
+};
+
+function sanitizeDirectAIResult(value = {}) {
+  const order = normalizeDirectOrder(value.order || {});
+  return {
+    reply: cleanDirectAIReply(value.reply || ""),
+    intent: String(value.intent || "other"),
+    order,
+    readyForTeam: Boolean(value.readyForTeam),
+    needsHuman: Boolean(value.needsHuman),
+    confidence: Number(value.confidence || 0)
+  };
+}
+
+function directAIFallbackReply(rawText = "", data = emptyDirectAIData()) {
+  const order = normalizeDirectOrder(data.order);
+  const text = normalize(rawText);
+  const missing = directAIOrderMissing(order);
+
+  if (hasAny(text, ["menor", "pequena", "broto"])) {
+    return {
+      reply: "Claro. Para pizza menor temos opcoes por fatias: 2, 4 ou 6. Qual sabor e quantas fatias voce deseja?",
+      order,
+      readyForTeam: false,
+      needsHuman: false,
+      confidence: 0.2
+    };
+  }
+
+  if (hasAny(text, ["pizza", "pizzas"])) {
+    return {
+      reply: "Otima escolha. Qual sabor e quantas fatias voce deseja? Temos 2, 4, 6, 8, 10, 12 ou 16 fatias.",
+      order,
+      readyForTeam: false,
+      needsHuman: false,
+      confidence: 0.2
+    };
+  }
+
+  return {
+    reply: directAIMissingQuestion(order, missing),
+    order,
+    readyForTeam: false,
+    needsHuman: false,
+    confidence: 0.1
+  };
+}
+
+function directAISession(data = emptyDirectAIData(), reason = "ai_direct") {
+  const now = new Date();
+  return {
+    state: AI_DIRECT_STATE,
+    data: normalizeDirectAIData(data),
+    startedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt: addMinutes(now, TIMEOUT_COLETA),
+    reason
+  };
+}
+
+function emptyDirectAIData() {
+  return {
+    order: emptyDirectOrder(),
+    history: [],
+    awaitingCustomerConfirmation: false
+  };
+}
+
+function emptyDirectOrder() {
+  return {
+    customerName: "",
+    fulfillment: "",
+    address: "",
+    payment: "",
+    changeFor: "",
+    notes: "",
+    items: []
+  };
+}
+
+function normalizeDirectAIData(data = {}) {
+  return {
+    order: normalizeDirectOrder(data.order || data),
+    history: Array.isArray(data.history) ? data.history.slice(-8).map(normalizeDirectHistoryItem) : [],
+    awaitingCustomerConfirmation: Boolean(data.awaitingCustomerConfirmation)
+  };
+}
+
+function normalizeDirectHistoryItem(item = {}) {
+  return {
+    customer: String(item.customer || "").slice(0, 500),
+    bhibi: String(item.bhibi || "").slice(0, 700),
+    at: item.at || new Date().toISOString()
+  };
+}
+
+function normalizeDirectOrder(order = {}) {
+  const normalized = {
+    ...emptyDirectOrder(),
+    customerName: String(order.customerName || order.name || "").trim(),
+    fulfillment: normalizeDirectFulfillment(order.fulfillment || ""),
+    address: String(order.address || "").trim(),
+    payment: parsePayment(normalize(order.payment || "")) || "",
+    changeFor: String(order.changeFor || "").trim(),
+    notes: String(order.notes || "").trim(),
+    items: Array.isArray(order.items) ? order.items.map(normalizeDirectItem).filter(directItemHasContent) : []
+  };
+
+  if (normalized.fulfillment !== "entrega") normalized.address = "";
+  if (normalized.payment !== "dinheiro") normalized.changeFor = "";
+  return normalized;
+}
+
+function normalizeDirectFulfillment(value = "") {
+  const text = normalize(value);
+  if (hasAny(text, ["entrega", "delivery", "entregar"])) return "entrega";
+  if (hasAny(text, ["retirada", "retirar", "buscar", "balcao"])) return "retirada";
+  if (hasAny(text, ["local", "mesa", "salao", "salao"])) return "local";
+  return "";
+}
+
+function normalizeDirectItem(item = {}) {
+  const quantity = Number(item.quantity || 1);
+  return {
+    category: String(item.category || "").trim(),
+    name: String(item.name || "").trim(),
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    size: String(item.size || "").trim(),
+    slices: normalizeSlices(item.slices || item.fatias || ""),
+    price: String(item.price || "").trim(),
+    extras: String(item.extras || "").trim(),
+    notes: String(item.notes || "").trim()
+  };
+}
+
+function normalizeSlices(value = "") {
+  const text = normalize(String(value || ""));
+  const match = text.match(/\b(2|4|6|8|10|12|16)\b/);
+  return match ? match[1] : "";
+}
+
+function directItemHasContent(item = {}) {
+  return Boolean(item.name || item.category || item.size || item.slices || item.extras || item.notes);
+}
+
+function appendDirectHistory(history = [], customer = "", bhibi = "") {
+  return [
+    ...(Array.isArray(history) ? history.slice(-7) : []),
+    {
+      customer: String(customer || "").slice(0, 500),
+      bhibi: String(bhibi || "").slice(0, 700),
+      at: new Date().toISOString()
+    }
+  ];
+}
+
+function directAIOrderMissing(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  const missing = [];
+
+  if (!order.items.length) missing.push("item");
+  for (const item of order.items) {
+    const category = normalize(item.category || item.name);
+    const name = normalize(item.name);
+    if (category.includes("pizza") || name.includes("pizza")) {
+      if (!item.slices) missing.push("fatias");
+      if (!name || name === "pizza" || name === "pizzas") missing.push("sabor");
+    }
+  }
+  if (!order.customerName) missing.push("nome");
+  if (!order.fulfillment) missing.push("tipo");
+  if (order.fulfillment === "entrega" && !order.address) missing.push("endereco");
+  if (!order.payment) missing.push("pagamento");
+  if (order.payment === "dinheiro" && !order.changeFor) missing.push("troco");
+
+  return uniqueList(missing);
+}
+
+function directAIMissingQuestion(orderData = emptyDirectOrder(), missingList = []) {
+  const order = normalizeDirectOrder(orderData);
+  const missing = missingList.length ? missingList : directAIOrderMissing(order);
+
+  if (missing.includes("item")) {
+    return "Me conta o que voce vai querer hoje: pizza, frango, batata, carne na tabua, porcao ou bebida?";
+  }
+  if (missing.includes("sabor") || missing.includes("fatias")) {
+    return "Para pizza eu preciso fechar certinho: qual sabor e quantas fatias? Temos 2, 4, 6, 8, 10, 12 ou 16.";
+  }
+  if (missing.includes("nome")) {
+    return "Show. Qual nome eu coloco no pedido?";
+  }
+  if (missing.includes("tipo")) {
+    return "Vai ser para entrega ou retirada no balcao?";
+  }
+  if (missing.includes("endereco")) {
+    return "Qual e o endereco completo com bairro?";
+  }
+  if (missing.includes("pagamento")) {
+    return "Qual vai ser a forma de pagamento: Pix, cartao ou dinheiro?";
+  }
+  if (missing.includes("troco")) {
+    return "Vai precisar de troco? Se sim, troco para quanto?";
+  }
+  return "Perfeito. Me manda o detalhe que falta para eu fechar certinho.";
+}
+
+function directAIConfirmationQuestion(orderData = emptyDirectOrder()) {
+  return [
+    "Fechei o resumo assim:",
+    "",
+    formatDirectAIOrderSummary(orderData),
+    "",
+    "Posso encaminhar para a equipe conferir?"
+  ].join("\n");
+}
+
+async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(), reason = "ai_direct_complete") {
+  const order = normalizeDirectOrder(orderData);
+  const legacyData = directAIOrderToLegacyOrder(order);
+  const orderRecord = buildPhaseOneOrderRecord({
+    customerPhone: message.from,
+    data: legacyData,
+    reason,
+    sourceMessageId: message.id
+  });
+
+  orderRecord.source = "bibi-whatsapp-direct-ai";
+  orderRecord.channel = "whatsapp_direct";
+  orderRecord.aiDirect = {
+    enabled: true,
+    model: AI_DIRECT_MODEL,
+    source: aiCredentialSource()
+  };
+  orderRecord.rawSummary = formatDirectAIOrderSummary(order);
+
+  const queueResult = await savePhaseOneOrder(orderRecord);
+  const storeNotification = await notifyStoreManualOrder(message.from, orderRecord.rawSummary, orderRecord, queueResult);
+  const next = forwardedSession(legacyData, reason);
+  await saveConversationSession(message.from, next);
+
+  if (!storeNotification.ok) {
+    console.error("BCK_BIBI_AI_DIRECT_STORE_NOTIFY_FAILED", JSON.stringify({
+      customer: maskPhone(message.from),
+      orderId: orderRecord.id,
+      error: storeNotification.error || "send_failed"
+    }));
+    return {
+      replyText: [
+        "Recebi seu pedido e montei tudo certinho.",
+        `Protocolo: ${orderRecord.id}`,
+        "",
+        "Mas o aviso automatico para a equipe falhou agora. Vou chamar alguem da equipe para assumir aqui, um minutinho!"
+      ].join("\n"),
+      reason: "store_notify_failed",
+      state: next.state
+    };
+  }
+
+  return {
+    replyText: [
+      "Show de bola, encaminhei seu pedido para a equipe conferir antes de confirmar.",
+      `Protocolo: ${orderRecord.id}`,
+      "",
+      "A equipe vai conferir valor, disponibilidade e prazo. Depois te responde por aqui com a confirmacao."
+    ].join("\n"),
+    reason: "forwarded_to_team",
+    state: next.state
+  };
+}
+
+function directAIOrderToLegacyOrder(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return normalizeOrderData({
+    name: order.customerName,
+    address: order.fulfillment === "entrega" ? order.address : order.fulfillment,
+    payment: order.payment,
+    changeFor: order.changeFor,
+    notes: [
+      order.notes,
+      order.fulfillment ? `Tipo: ${order.fulfillment}` : "",
+      "Origem: WhatsApp direto com IA"
+    ].filter(Boolean).join(" | "),
+    items: order.items.map(formatDirectAIItem)
+  });
+}
+
+function formatDirectAIOrderSummary(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return [
+    order.customerName ? `Cliente: ${order.customerName}` : "",
+    order.fulfillment ? `Tipo: ${fulfillmentLabel(order.fulfillment)}` : "",
+    order.address ? `Endereco: ${order.address}` : "",
+    "",
+    "Pedido:",
+    ...order.items.map((item) => `- ${formatDirectAIItem(item)}`),
+    "",
+    order.payment ? `Pagamento: ${paymentLabel(order.payment)}` : "",
+    order.payment === "dinheiro" && order.changeFor ? `Troco: ${order.changeFor}` : "",
+    order.notes ? `Obs: ${order.notes}` : "",
+    "Origem: WhatsApp direto com IA"
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
+}
+
+function formatDirectAIItem(itemData = {}) {
+  const item = normalizeDirectItem(itemData);
+  const quantity = item.quantity && item.quantity !== 1 ? `${item.quantity}x ` : "1x ";
+  const slices = item.slices ? `${item.slices} fatias` : item.size;
+  const details = [
+    item.name || item.category || "Item",
+    slices,
+    item.extras ? `extras: ${item.extras}` : "",
+    item.price ? `valor informado: ${item.price}` : "",
+    item.notes
+  ].filter(Boolean).join(" - ");
+  return `${quantity}${details}`;
+}
+
+function fulfillmentLabel(value = "") {
+  return {
+    entrega: "Entrega",
+    retirada: "Retirada no balcao",
+    local: "Consumo no local"
+  }[value] || value;
+}
+
+function cleanDirectAIReply(value = "") {
+  return String(value || "")
+    .replace(/https:\/\/beerchicken-bck\.netlify\.app\/?\S*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1200);
+}
+
+function buildDirectAIMenuKnowledge() {
+  let menu;
+  try {
+    menu = require("../../data/cardapio_bck_estruturado.json");
+  } catch (error) {
+    console.warn("BCK_BIBI_AI_DIRECT_MENU_MISSING", JSON.stringify({
+      message: error?.message || String(error)
+    }));
+    return "Cardapio completo indisponivel no runtime. Nao invente precos.";
+  }
+
+  const categories = Array.isArray(menu.categorias) ? menu.categorias : [];
+  const lines = [
+    "CARDAPIO BCK - use estes dados como fonte de verdade.",
+    "Pizzas trabalham por fatias: 2, 4, 6, 8, 10, 12 e 16.",
+    "Valores R$ 0,00 exigem conferencia humana."
+  ];
+
+  for (const category of categories) {
+    const name = String(category.nome || "").trim();
+    const items = Array.isArray(category.itens) ? category.itens : [];
+    if (!name || !items.length) continue;
+    lines.push(`\n${name}:`);
+    for (const item of items) {
+      lines.push(menuItemKnowledgeLine(item));
+    }
+  }
+
+  const pending = Array.isArray(menu.pendencias_para_conferir) ? menu.pendencias_para_conferir : [];
+  if (pending.length) {
+    lines.push("\nPENDENCIAS DE CONFERENCIA:");
+    for (const item of pending.slice(0, 20)) lines.push(`- ${item}`);
+  }
+
+  return lines.join("\n").slice(0, 65000);
+}
+
+function menuItemKnowledgeLine(item = {}) {
+  const name = String(item.nome || "").trim();
+  const category = String(item.categoria || "").trim();
+  const sale = item.salao;
+  const delivery = item.entrega;
+  if (sale && typeof sale === "object") {
+    const sizes = ["2f", "4f", "6f", "8f", "10f", "12f", "16f"]
+      .map((key) => `${key}:${sale[key] || delivery?.[key] || ""}`)
+      .filter((part) => !part.endsWith(":"))
+      .join(", ");
+    return `- ${name} (${category}) ${sizes}`;
+  }
+  return `- ${name} (${category}) salao:${sale || ""} entrega:${delivery || ""}`;
 }
 
 async function handleMenuState({ message, session, rawText, text, siteUrl }) {
@@ -2490,6 +3177,17 @@ async function deleteConversationSession(phone) {
 function normalizeSession(session) {
   if (!session || typeof session !== "object") return menuSession();
 
+  if (session.state === AI_DIRECT_STATE) {
+    return {
+      state: AI_DIRECT_STATE,
+      data: normalizeDirectAIData(session.data),
+      startedAt: session.startedAt || new Date().toISOString(),
+      updatedAt: session.updatedAt || new Date().toISOString(),
+      expiresAt: session.expiresAt || null,
+      reason: session.reason || "ai_direct"
+    };
+  }
+
   const state = Object.values(STATES).includes(session.state) ? session.state : STATES.MENU;
   return {
     state,
@@ -2507,7 +3205,7 @@ function expireSessionIfNeeded(session) {
   const expiresAt = Date.parse(session.expiresAt);
   if (!Number.isFinite(expiresAt) || expiresAt > Date.now()) return session;
 
-  if (session.state === STATES.COLLECTING || session.state === STATES.CONFIRMING || session.state === STATES.FORWARDED) {
+  if (session.state === STATES.COLLECTING || session.state === STATES.CONFIRMING || session.state === STATES.FORWARDED || session.state === AI_DIRECT_STATE) {
     return {
       ...menuSession(),
       expiredNotice: session.state
@@ -4715,6 +5413,10 @@ if (process.env.NODE_ENV === "test") {
     extractAdminConfirmationOrderId,
     confirmOrderAndSendPurchaseLink,
     confirmationCustomerPhone,
-    confirmationOrderValue
+    confirmationOrderValue,
+    handleBibiDirectAIMessage,
+    directAIOrderMissing,
+    normalizeDirectOrder,
+    directAIMissingQuestion
   };
 }

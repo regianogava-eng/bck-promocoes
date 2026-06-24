@@ -1,0 +1,2000 @@
+{
+  "restaurante": "BCK Beer Chicken",
+  "origem": "C:\\Users\\gatod\\Downloads\\cardapio_completo_bck_20260621_234153.txt",
+  "arquivo_gerado_em": "21/06/2026 23:41:53",
+  "observacoes_para_atendente": [
+    "A Bhibi atende por mensagem direta no WhatsApp, entao deve conduzir a conversa desde o inicio quando o cliente chegar sem contexto.",
+    "Nao prender o cliente em formulario rigido. Aceitar pedido livre, interpretar intencao e perguntar so o que falta.",
+    "Evitar listas enormes. Responder a duvida do cliente, filtrar opcoes e fazer a proxima pergunta util.",
+    "Se o cliente pedir cardapio, mostrar uma visao curta das categorias principais e perguntar por qual ele quer comecar.",
+    "Se o cliente disser so pizzas, continuar em pizzas e perguntar tamanho/fatias ou sabor, sem reiniciar atendimento.",
+    "Se o cliente disser menor, pequena ou broto depois de falar sobre pizza, oferecer as opcoes menores reais: 2, 4 e 6 fatias, e perguntar quantas fatias deseja.",
+    "Se o sabor ja estiver claro, informar os valores de 2, 4 e 6 fatias daquele sabor antes de perguntar quantas fatias deseja.",
+    "Se o cliente usar tamanho generico como grande, gigante, familia, maracana, media, pequena, broto, menor, maior, normal ou tamanho padrao, confirmar o numero de fatias.",
+    "Nao converter apelido de tamanho automaticamente; para pizzas, sempre confirmar fatias: 2, 4, 6, 8, 10, 12 ou 16.",
+    "Resposta padrao para tamanho generico: Aqui trabalhamos por fatias: 2, 4, 6, 8, 10, 12 ou 16. Quantas fatias voce deseja?",
+    "Nao empurrar o cliente para link/cardapio externo quando ele ja esta conversando no WhatsApp; o link e apoio, nao substituto do atendimento.",
+    "Nao informar entrega gratis, regioes atendidas, taxa de entrega, horario ou prazo se isso nao estiver cadastrado na integracao.",
+    "Se o cliente ja disser o item desejado, ir direto para tamanho, quantidade, retirada/entrega e preco.",
+    "Nunca fechar, salvar ou encaminhar pizza sem sabor e tamanho/fatias.",
+    "Nao pedir endereco, pagamento ou nome antes de saber o item principal completo.",
+    "Sequencia obrigatoria: item, sabor/tamanho, borda se aplicavel, nome, endereco se entrega, pagamento, resumo e confirmacao para encaminhar.",
+    "Nao transformar mensagens como quero menor, pizza, cartao ou endereco em nome do cliente.",
+    "Antes de enviar para o numero oficial, mostrar resumo completo e perguntar se pode encaminhar.",
+    "Se o cliente disser que o pedido foi fechado errado ou faltou informacao, pedir desculpa, reconhecer e voltar ao dado faltante.",
+    "Depois de montar o pedido completo, encaminhar o resumo para NUMERO_OFICIAL_PIZZARIA.",
+    "Depois do envio ao numero oficial, o status correto e aguardando conferencia da equipe.",
+    "Nao tratar o pedido como aceito/preparando antes da confirmacao da equipe humana ou do PDV.",
+    "So responder pedido confirmado ao cliente depois de receber confirmacao explicita da equipe humana ou do PDV.",
+    "Um ok simples da equipe ja conta como confirmacao valida, desde que venha do numero oficial/equipe ou do PDV.",
+    "Quando confirmado, responder: Pedido confirmado! A equipe ja recebeu certinho e vai seguir com o preparo.",
+    "Se a equipe informar previsao de entrega ou retirada, incluir essa previsao na resposta ao cliente.",
+    "Se a automacao falhar ao avisar a equipe ou o PDV, nao mandar o cliente resolver por link; transferir para humano.",
+    "Antes de encaminhar, confirmar nome, itens, quantidades, tipo do pedido, endereco quando for entrega, pagamento e troco quando houver.",
+    "Usar preco de salao quando o cliente for consumir no local.",
+    "Usar preco de entrega quando o cliente pedir delivery/entrega.",
+    "Para pizza, sempre confirmar o tamanho/fatias antes de informar valor final.",
+    "Itens com R$ 0,00 nao devem ter preco inventado; a Bhibi deve dizer que vai chamar a equipe do balcao.",
+    "Taxa de entrega, tempo de entrega, formas de pagamento e horario de funcionamento nao aparecem neste arquivo."
+  ],
+  "categorias": [
+    {
+      "nome": "BATATA RECHEADA",
+      "itens": [
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Bacalhau com Creme de Leite",
+          "status": "Ativo",
+          "salao": "R$ 45,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Batata, Carne Seca e Catupiry",
+          "status": "Ativo",
+          "salao": "R$ 45,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Batata, Frango, Queijo e Batata Palha",
+          "status": "Ativo",
+          "salao": "R$ 40,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Batata, Mussarela e Presunto",
+          "status": "Ativo",
+          "salao": "R$ 40,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Calabresa, Presunto e Queijo",
+          "status": "Ativo",
+          "salao": "R$ 42,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Catupiry com Frango",
+          "status": "Ativo",
+          "salao": "R$ 42,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Mussarela, Frango, Palmito, Batata Palha e Milho",
+          "status": "Ativo",
+          "salao": "R$ 43,90",
+          "entrega": "R$ 48,90"
+        },
+        {
+          "categoria": "BATATA RECHEADA",
+          "nome": "Quatro Queijos",
+          "status": "Ativo",
+          "salao": "R$ 43,90",
+          "entrega": "R$ 49,90"
+        }
+      ]
+    },
+    {
+      "nome": "BEBIDA",
+      "itens": [
+        {
+          "categoria": "BEBIDA",
+          "nome": "Bells",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Budweiser",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Caipirinha",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Caipiríssima",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Caipiríssima com Absolut",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Campari",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Cerveja Brahma 600 ml",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Cerveja Brahma Extra",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Cerveja Heineken",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Cerveja Skol",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Coquetel de frutas",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Eisenbahn",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Jarra de Suco Grande",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Jarra de Suco Pequena",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Jarra de vinho",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Limonada da casa",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Limonada suíça",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Martini",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Petra",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Refrigerante 1,5 L",
+          "status": "Ativo",
+          "salao": "R$ 15,00",
+          "entrega": "R$ 15,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Refrigerante 2 L",
+          "status": "Ativo",
+          "salao": "R$ 17,00",
+          "entrega": "R$ 17,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Refrigerante 600 ml",
+          "status": "Ativo",
+          "salao": "R$ 10,00",
+          "entrega": "R$ 10,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Refrigerante lata",
+          "status": "Ativo",
+          "salao": "R$ 7,00",
+          "entrega": "R$ 7,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Suco de frutas com leite",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Suco de frutas diversas",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Suco de laranja",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Taça de vinho",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Vodka",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Whisky (importado)",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BEBIDA",
+          "nome": "Água mineral comum",
+          "status": "Ativo",
+          "salao": "R$ 5,00",
+          "entrega": "R$ 5,00"
+        }
+      ]
+    },
+    {
+      "nome": "BURGUER",
+      "itens": [
+        {
+          "categoria": "BURGUER",
+          "nome": "Barbecue Chicken Burguer",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Burguer BCK",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Chicken Breast Royale",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Chicken Cheddar",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Chicken Cheese",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Chicken Crunchy",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Combo: BCK + Batata + Refri Lata",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Grã Filé BCK Burguer",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "BURGUER",
+          "nome": "Shank Pork Chicken",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        }
+      ]
+    },
+    {
+      "nome": "CARNE NA TÁBUA",
+      "itens": [
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Meia Mista (2 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 84,90",
+          "entrega": "R$ 84,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Meia Super (2 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 89,90",
+          "entrega": "R$ 89,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Mista na Tábua (4 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 114,90",
+          "entrega": "R$ 114,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Mistinha (1 pessoa)",
+          "status": "Ativo",
+          "salao": "R$ 49,90",
+          "entrega": "R$ 49,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Super mista (4 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 119,90",
+          "entrega": "R$ 119,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "Supinha (1 pessoa)",
+          "status": "Ativo",
+          "salao": "R$ 55,90",
+          "entrega": "R$ 55,90"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "½ Alcatra",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "½ Bifão",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "½ Filé à Moda",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "CARNE NA TÁBUA",
+          "nome": "½ Picanha",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        }
+      ]
+    },
+    {
+      "nome": "FRANGO FRITO",
+      "itens": [
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango 05 – 15 pedaços asa/coxinha da asa + ½ batata + ½ polenta",
+          "status": "Ativo",
+          "salao": "R$ 96,90",
+          "entrega": "R$ 96,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango executivo (1 pessoa)",
+          "status": "Ativo",
+          "salao": "R$ 51,90",
+          "entrega": "R$ 51,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango filé 1kg + batata cheddar e bacon",
+          "status": "Ativo",
+          "salao": "R$ 89,90",
+          "entrega": "R$ 89,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango filé 500g + batata cheddar e bacon",
+          "status": "Ativo",
+          "salao": "R$ 57,90",
+          "entrega": "R$ 57,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 1 (2 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 72,90",
+          "entrega": "R$ 72,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 1-E (peito de frango)",
+          "status": "Ativo",
+          "salao": "R$ 74,90",
+          "entrega": "R$ 76,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 2 (3 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 88,90",
+          "entrega": "R$ 90,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 2-E (3 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 101,90",
+          "entrega": "R$ 81,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 2-EE (20 pedaços peito de frango crocante)",
+          "status": "Ativo",
+          "salao": "R$ 96,90",
+          "entrega": "R$ 96,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 2-S (3 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 84,90",
+          "entrega": "R$ 82,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 3 (4 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 101,90",
+          "entrega": "R$ 101,90"
+        },
+        {
+          "categoria": "FRANGO FRITO",
+          "nome": "Frango frito nº 4 (5 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 111,90",
+          "entrega": "R$ 111,90"
+        }
+      ]
+    },
+    {
+      "nome": "GRELHADO",
+      "itens": [
+        {
+          "categoria": "GRELHADO",
+          "nome": "Bifão à BCK (1 pessoa)",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "GRELHADO",
+          "nome": "Bifão à BCK 2 (2 pessoas)",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "GRELHADO",
+          "nome": "Filé à Moda",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "GRELHADO",
+          "nome": "Picanha grelhada no alho e óleo",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        },
+        {
+          "categoria": "GRELHADO",
+          "nome": "Prato Baixa Caloria",
+          "status": "Ativo",
+          "salao": "R$ 0,00",
+          "entrega": "R$ 0,00"
+        }
+      ]
+    },
+    {
+      "nome": "PIZZA",
+      "itens": [
+        {
+          "categoria": "PIZZA",
+          "nome": "Alho com Queijo",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 58,90",
+            "4f": "R$ 67,90",
+            "6f": "R$ 72,90",
+            "8f": "R$ 86,90",
+            "10f": "R$ 96,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 58,90",
+            "4f": "R$ 67,90",
+            "6f": "R$ 72,90",
+            "8f": "R$ 86,90",
+            "10f": "R$ 96,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Atum",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Bacon",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 48,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 98,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 128,90"
+          },
+          "entrega": {
+            "2f": "R$ 48,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 98,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 125,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Brasileira",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 35,90",
+            "4f": "R$ 48,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 105,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 48,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 105,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Calabresa",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 41,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 41,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Camarão com Catupiry",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 128,90"
+          },
+          "entrega": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 77,90",
+            "8f": "R$ 85,90",
+            "10f": "R$ 95,90",
+            "12f": "R$ 105,90",
+            "16f": "R$ 128,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Carne Seca com Catupiry",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 128,90"
+          },
+          "entrega": {
+            "2f": "R$ 51,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 128,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Casa Especial",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 61,90",
+            "6f": "R$ 71,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 48,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Catupiresa",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Champignon",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Da Casa",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 124,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 124,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Don Renato",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 43,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 43,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Frami",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Frango com Catupiry",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 59,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Frango com Cheddar",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 43,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 109,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 43,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 109,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Frango, Catupiry e Calabresa",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Grega",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Lombinho Canadense",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 47,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 123,90"
+          },
+          "entrega": {
+            "2f": "R$ 47,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 123,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Lombinho Canadense com Catupiry",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 62,90",
+            "6f": "R$ 729,20",
+            "8f": "R$ 82,90",
+            "10f": "R$ 92,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 123,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 62,90",
+            "6f": "R$ 729,20",
+            "8f": "R$ 82,90",
+            "10f": "R$ 92,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 123,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Lulu",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Marguerita",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Mussarela",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 100,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Napolitana",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 99,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Nete 1",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 42,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Nete Especial",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 61,90",
+            "6f": "R$ 71,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 121,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 121,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Palmito",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 126,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 126,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Palmito com Catupiry",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 127,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 127,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Pepperoni",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 47,90",
+            "4f": "R$ 63,90",
+            "6f": "R$ 74,90",
+            "8f": "R$ 84,90",
+            "10f": "R$ 94,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 130,90"
+          },
+          "entrega": {
+            "2f": "R$ 47,90",
+            "4f": "R$ 63,90",
+            "6f": "R$ 74,90",
+            "8f": "R$ 84,90",
+            "10f": "R$ 94,90",
+            "12f": "R$ 104,90",
+            "16f": "R$ 130,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Pizza do Zé",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          },
+          "entrega": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Pizza Light",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 122,90"
+          },
+          "entrega": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 68,90",
+            "8f": "R$ 78,90",
+            "10f": "R$ 88,90",
+            "12f": "R$ 98,90",
+            "16f": "R$ 122,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Portuguesa",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 89,90",
+            "10f": "R$ 99,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 122,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 89,90",
+            "10f": "R$ 99,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 122,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Portuguesa 2",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 89,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 130,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 58,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 89,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 102,90",
+            "16f": "R$ 130,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Portuguesa 3",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 61,90",
+            "6f": "R$ 71,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 61,90",
+            "6f": "R$ 71,90",
+            "8f": "R$ 81,90",
+            "10f": "R$ 91,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Quatro Queijos 1",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          },
+          "entrega": {
+            "2f": "R$ 46,90",
+            "4f": "R$ 59,90",
+            "6f": "R$ 69,90",
+            "8f": "R$ 79,90",
+            "10f": "R$ 89,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Quatro Queijos 2",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          },
+          "entrega": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Quatro Queijos 3",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          },
+          "entrega": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 125,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Quatro Queijos 4",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          },
+          "entrega": {
+            "2f": "R$ 49,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Siciliana",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 123,90"
+          },
+          "entrega": {
+            "2f": "R$ 44,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 123,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Tomate Seco",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          }
+        },
+        {
+          "categoria": "PIZZA",
+          "nome": "Vegetariana",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          },
+          "entrega": {
+            "2f": "R$ 45,90",
+            "4f": "R$ 60,90",
+            "6f": "R$ 70,90",
+            "8f": "R$ 80,90",
+            "10f": "R$ 90,90",
+            "12f": "R$ 101,90",
+            "16f": "R$ 126,90"
+          }
+        }
+      ]
+    },
+    {
+      "nome": "PIZZA DOCE",
+      "itens": [
+        {
+          "categoria": "PIZZA DOCE",
+          "nome": "Banana com Canela e Passas",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          },
+          "entrega": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          }
+        },
+        {
+          "categoria": "PIZZA DOCE",
+          "nome": "Beijinho",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          },
+          "entrega": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          }
+        },
+        {
+          "categoria": "PIZZA DOCE",
+          "nome": "Brigadeiro",
+          "status": "Ativo",
+          "salao": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          },
+          "entrega": {
+            "2f": "R$ 0,00",
+            "4f": "R$ 0,00",
+            "6f": "R$ 0,00",
+            "8f": "R$ 0,00",
+            "10f": "R$ 0,00",
+            "12f": "R$ 0,00",
+            "16f": "R$ 0,00"
+          }
+        }
+      ]
+    },
+    {
+      "nome": "PORÇÃO",
+      "itens": [
+        {
+          "categoria": "PORÇÃO",
+          "nome": "Batata Capixaba",
+          "status": "Ativo",
+          "salao": "R$ 37,90",
+          "entrega": "R$ 37,90"
+        },
+        {
+          "categoria": "PORÇÃO",
+          "nome": "Batata frita",
+          "status": "Ativo",
+          "salao": "R$ 29,90",
+          "entrega": "R$ 29,90"
+        },
+        {
+          "categoria": "PORÇÃO",
+          "nome": "Polenta frita",
+          "status": "Ativo",
+          "salao": "R$ 29,90",
+          "entrega": "R$ 29,90"
+        },
+        {
+          "categoria": "PORÇÃO",
+          "nome": "Salada mista",
+          "status": "Ativo",
+          "salao": "R$ 22,90",
+          "entrega": "R$ 22,90"
+        }
+      ]
+    }
+  ],
+  "itens_sem_preco": [
+    {
+      "categoria": "BEBIDA",
+      "nome": "Bells",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Budweiser",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Caipirinha",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Caipiríssima",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Caipiríssima com Absolut",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Campari",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Cerveja Brahma 600 ml",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Cerveja Brahma Extra",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Cerveja Heineken",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Cerveja Skol",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Coquetel de frutas",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Eisenbahn",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Jarra de Suco Grande",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Jarra de Suco Pequena",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Jarra de vinho",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Limonada da casa",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Limonada suíça",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Martini",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Petra",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Suco de frutas com leite",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Suco de frutas diversas",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Suco de laranja",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Taça de vinho",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Vodka",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BEBIDA",
+      "nome": "Whisky (importado)",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Barbecue Chicken Burguer",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Burguer BCK",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Chicken Breast Royale",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Chicken Cheddar",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Chicken Cheese",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Chicken Crunchy",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Combo: BCK + Batata + Refri Lata",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Grã Filé BCK Burguer",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "BURGUER",
+      "nome": "Shank Pork Chicken",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "CARNE NA TÁBUA",
+      "nome": "½ Alcatra",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "CARNE NA TÁBUA",
+      "nome": "½ Bifão",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "CARNE NA TÁBUA",
+      "nome": "½ Filé à Moda",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "CARNE NA TÁBUA",
+      "nome": "½ Picanha",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "GRELHADO",
+      "nome": "Bifão à BCK (1 pessoa)",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "GRELHADO",
+      "nome": "Bifão à BCK 2 (2 pessoas)",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "GRELHADO",
+      "nome": "Filé à Moda",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "GRELHADO",
+      "nome": "Picanha grelhada no alho e óleo",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "GRELHADO",
+      "nome": "Prato Baixa Caloria",
+      "status": "Ativo",
+      "salao": "R$ 0,00",
+      "entrega": "R$ 0,00"
+    },
+    {
+      "categoria": "PIZZA DOCE",
+      "nome": "Banana com Canela e Passas",
+      "status": "Ativo",
+      "salao": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      },
+      "entrega": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      }
+    },
+    {
+      "categoria": "PIZZA DOCE",
+      "nome": "Beijinho",
+      "status": "Ativo",
+      "salao": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      },
+      "entrega": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      }
+    },
+    {
+      "categoria": "PIZZA DOCE",
+      "nome": "Brigadeiro",
+      "status": "Ativo",
+      "salao": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      },
+      "entrega": {
+        "2f": "R$ 0,00",
+        "4f": "R$ 0,00",
+        "6f": "R$ 0,00",
+        "8f": "R$ 0,00",
+        "10f": "R$ 0,00",
+        "12f": "R$ 0,00",
+        "16f": "R$ 0,00"
+      }
+    }
+  ],
+  "pendencias_para_conferir": [
+    "FRANGO FRITO | Frango frito nº 2-E (3 pessoas): entrega R$ 81,90 bem menor que salao R$ 101,90; conferir.",
+    "PIZZA | Frango com Catupiry | 6f salao R$ 59,90: mesmo valor da 4f e diferente da entrega; conferir.",
+    "PIZZA | Lombinho Canadense com Catupiry | 6f entrega R$ 729,20: valor parece alto demais.",
+    "PIZZA | Lombinho Canadense com Catupiry | 6f salao R$ 729,20: valor parece alto demais."
+  ]
+}
