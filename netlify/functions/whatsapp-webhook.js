@@ -34,7 +34,7 @@ const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v5";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v6";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -825,6 +825,36 @@ async function handleBibiDirectAIMessage(message) {
     };
   }
 
+  const contextRecovery = directAIContextRecoveryReply(rawText, data);
+  if (contextRecovery) {
+    const nextData = normalizeDirectAIData({
+      ...data,
+      history: appendDirectHistory(data.history, rawText, contextRecovery),
+      awaitingCustomerConfirmation: directAIOrderMissing(data.order).length === 0
+    });
+    await saveConversationSession(message.from, directAISession(nextData, "context_recovery"));
+    return {
+      replyText: contextRecovery,
+      reason: "context_recovery",
+      state: AI_DIRECT_STATE
+    };
+  }
+
+  const commentReply = directAICommentReply(rawText, data);
+  if (commentReply) {
+    const nextData = normalizeDirectAIData({
+      ...data,
+      history: appendDirectHistory(data.history, rawText, commentReply),
+      awaitingCustomerConfirmation: directAIOrderMissing(data.order).length === 0
+    });
+    await saveConversationSession(message.from, directAISession(nextData, "customer_comment"));
+    return {
+      replyText: commentReply,
+      reason: "customer_comment",
+      state: AI_DIRECT_STATE
+    };
+  }
+
   if (data.awaitingCustomerConfirmation) {
     const awaitingCorrection = applyDirectAICorrection(rawText, data);
     if (awaitingCorrection.applied) {
@@ -911,9 +941,10 @@ async function handleBibiDirectAIMessage(message) {
   }
 
   const aiResult = await createDirectAIReply(rawText, data);
+  const mergedOrder = mergeDirectAIPersistentOrder(data.order, aiResult.order, rawText);
   const nextData = normalizeDirectAIData({
     ...data,
-    order: aiResult.order || data.order,
+    order: mergedOrder,
     history: appendDirectHistory(data.history, rawText, aiResult.reply),
     awaitingCustomerConfirmation: false
   });
@@ -968,7 +999,7 @@ async function handleBibiDirectAIMessage(message) {
     };
   }
 
-  const replyText = missing.length && aiResult.readyForTeam
+  const replyText = missing.length
     ? directAIMissingQuestion(nextData.order, missing)
     : cleanDirectAIReply(aiResult.reply) || directAIMissingQuestion(nextData.order, missing);
 
@@ -1040,6 +1071,8 @@ function directAIInstructions() {
     "Se o cliente apenas corrigir entrega para retirada/salao ou mudar o numero de fatias da mesma pizza, mantenha o item anterior e atualize so esses campos, recalculando o preco conforme entrega ou salao.",
     "Se o cliente disser tira/remover um item e coloca outro, remova somente o item citado e mantenha os itens validos que continuam no pedido.",
     "Se o cliente apontar erro no resumo, como endereco ou numero da casa errado, nao encaminhe. Corrija, mostre novo resumo e pergunte de novo se pode encaminhar.",
+    "Nunca apague o carrinho por elogio, piada, comentario sobre a Bhibi, Codex ou regra. Responda curto e continue exatamente do campo que falta.",
+    "Se o cliente disser eu ja fiz o pedido, voce nao pegou meu endereco ou algo parecido, recupere o que ja foi combinado no historico e continue do que falta.",
     "Nunca salve 'quero menor', 'pizza', 'cartao' ou endereco como nome do cliente.",
     "Se o cliente corrigir nome com Ops, escrevi errado, corretor maluco, ou melhor, use apenas o nome corrigido e ignore essas expressoes.",
     "Se o cliente pedir cardapio, mostre uma lista curta e ofereca continuar por partes.",
@@ -1297,6 +1330,189 @@ function appendDirectHistory(history = [], customer = "", bhibi = "") {
   ];
 }
 
+function mergeDirectAIPersistentOrder(previousOrder = emptyDirectOrder(), candidateOrder = emptyDirectOrder(), rawText = "") {
+  const previous = normalizeDirectOrder(previousOrder);
+  const candidate = normalizeDirectOrder(candidateOrder);
+  const text = normalize(rawText);
+
+  if (!directHasOrderMemory(previous) || shouldAllowDirectAIOrderClear(text)) {
+    return candidate;
+  }
+
+  const fulfillment = candidate.fulfillment || previous.fulfillment;
+  const payment = candidate.payment || previous.payment;
+  const items = directMergePersistentItems(previous.items, candidate.items, text);
+
+  return normalizeDirectOrder({
+    customerName: candidate.customerName || previous.customerName,
+    fulfillment,
+    address: fulfillment === "entrega"
+      ? candidate.address || previous.address
+      : "",
+    payment,
+    changeFor: payment === "dinheiro" ? candidate.changeFor || previous.changeFor : "",
+    notes: mergeDirectTextField(previous.notes, candidate.notes),
+    items
+  });
+}
+
+function directMergePersistentItems(previousItems = [], candidateItems = [], text = "") {
+  if (!previousItems.length) return candidateItems;
+  if (!candidateItems.length) return previousItems;
+
+  const signals = orderSignals(text);
+  if (!signals.hasFood) return previousItems;
+
+  const previousScore = directItemsSpecificityScore(previousItems);
+  const candidateScore = directItemsSpecificityScore(candidateItems);
+  if (candidateScore < previousScore && !hasDirectReplacementSignal(text)) {
+    return previousItems;
+  }
+
+  return candidateItems;
+}
+
+function directItemsSpecificityScore(items = []) {
+  return items.reduce((sum, item) => {
+    const normalized = normalizeDirectItem(item);
+    let score = 0;
+    if (normalized.category) score += 1;
+    if (normalized.name && !["pizza", "pizzas", "item"].includes(normalize(normalized.name))) score += 3;
+    if (normalized.slices || normalized.size) score += 2;
+    if (normalized.price) score += 1;
+    if (normalized.extras || normalized.notes) score += 1;
+    return sum + score;
+  }, 0);
+}
+
+function mergeDirectTextField(previous = "", candidate = "") {
+  const current = String(previous || "").trim();
+  const next = String(candidate || "").trim();
+  if (!current) return next;
+  if (!next || normalize(current) === normalize(next) || normalize(current).includes(normalize(next))) return current;
+  if (normalize(next).includes(normalize(current))) return next;
+  return [current, next].join(" | ");
+}
+
+function directHasOrderMemory(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return Boolean(
+    order.items.length
+    || order.customerName
+    || order.fulfillment
+    || order.address
+    || order.payment
+    || order.notes
+  );
+}
+
+function shouldAllowDirectAIOrderClear(text = "") {
+  return hasAny(text, [
+    "mudar tudo",
+    "trocar tudo",
+    "comecar do zero",
+    "começar do zero",
+    "apagar pedido",
+    "limpar pedido"
+  ]);
+}
+
+function hasDirectReplacementSignal(text = "") {
+  return hasAny(text, [
+    "mudei de ideia",
+    "mudei de idéia",
+    "troquei de ideia",
+    "em vez disso",
+    "ao inves disso",
+    "no lugar",
+    "tira",
+    "remove",
+    "mudar tudo",
+    "trocar tudo"
+  ]);
+}
+
+function directAIContextRecoveryReply(rawText = "", data = emptyDirectAIData()) {
+  const text = normalize(rawText);
+  const order = normalizeDirectOrder(data.order);
+  if (!directHasOrderMemory(order)) return "";
+  if (!hasAny(text, [
+    "eu ja fiz o pedido",
+    "eu já fiz o pedido",
+    "ja fiz o pedido",
+    "já fiz o pedido",
+    "acabei de fazer um pedido",
+    "voce nao pegou",
+    "você não pegou",
+    "vc nao pegou",
+    "vc não pegou",
+    "nao pegou meu endereco",
+    "não pegou meu endereço",
+    "so falta o endereco",
+    "só falta o endereço",
+    "so faltou o endereco",
+    "só faltou o endereço",
+    "confirmar o endereco",
+    "confirmar endereço",
+    "ultimo pedido",
+    "último pedido"
+  ])) return "";
+
+  return [
+    `Verdade, desculpa! Voce tinha pedido ${directAIOrderMemoryLine(order)}, certo?`,
+    directAIContinueFromMissing(order)
+  ].filter(Boolean).join("\n\n");
+}
+
+function directAICommentReply(rawText = "", data = emptyDirectAIData()) {
+  if (data.awaitingCustomerConfirmation) return "";
+  const text = normalize(rawText);
+  const order = normalizeDirectOrder(data.order);
+  if (!directHasOrderMemory(order)) return "";
+
+  const signals = orderSignals(text);
+  if (signals.hasFood || signals.hasAddress || signals.hasPayment || isChangeRequest(text) || isCancelRequest(text) || isHumanRequest(text)) {
+    return "";
+  }
+
+  if (!hasAny(text, [
+    "inteligente",
+    "gostei",
+    "boa regra",
+    "essa regra",
+    "codex",
+    "obrigado",
+    "obrigada",
+    "aeee",
+    "aeeee",
+    "kkk",
+    "kkkk",
+    "haha",
+    "ta ficando",
+    "tá ficando"
+  ])) return "";
+
+  return [
+    "Ah, obrigada! To me esforcando.",
+    directAIContinueFromMissing(order)
+  ].filter(Boolean).join("\n\n");
+}
+
+function directAIOrderMemoryLine(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  const itemLine = order.items.length
+    ? order.items.map(formatDirectAIItem).join(" + ")
+    : "um pedido em andamento";
+  return itemLine;
+}
+
+function directAIContinueFromMissing(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  const missing = directAIOrderMissing(order);
+  if (missing.length) return directAIMissingQuestion(order, missing);
+  return directAIConfirmationQuestion(order);
+}
+
 function directAIOrderMissing(orderData = emptyDirectOrder()) {
   const order = normalizeDirectOrder(orderData);
   const missing = [];
@@ -1364,6 +1580,10 @@ function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
     "em vez disso",
     "ao inves disso",
     "agora quero",
+    "mudar tudo",
+    "trocar tudo",
+    "comecar do zero",
+    "começar do zero",
     "quero ver as opcoes",
     "quero ver as opções"
   ]);
@@ -1515,7 +1735,7 @@ function directHalfAndHalfPriceInfo(item = {}, fulfillment = "") {
   ].filter(Boolean).join(" "));
   const hasHalfSignal = hasAny(text, ["meio a meio", "meia", "metade", "meio/meio"])
     || /[/|]/.test(String(item.name || item.extras || item.notes || ""));
-  if (directItemKind(item) !== "pizza" && !hasHalfSignal) return null;
+  if (!hasHalfSignal) return null;
 
   const flavors = directPizzaMenuItems()
     .filter((menuItem) => {
@@ -5924,8 +6144,14 @@ function isClarifyingQuestion(text) {
 
 function shouldResetConversation(text) {
   if (!text) return false;
-  return RESET_KEYWORDS.some((keyword) => keyword && text === keyword)
-    || RESET_KEYWORDS.some((keyword) => keyword && text.includes(keyword));
+  if (RESET_KEYWORDS.some((keyword) => keyword && text === keyword)) return true;
+  return hasAny(text, [
+    "resetar bibi",
+    "resetar atendimento",
+    "novo atendimento",
+    "comecar de novo",
+    "começar de novo"
+  ]);
 }
 
 function shouldResetHumanHandoff(text) {
@@ -6124,6 +6350,10 @@ if (process.env.NODE_ENV === "test") {
     directHalfAndHalfPriceInfo,
     formatDirectAIItem,
     formatDirectAIOrderSummary,
-    correctDirectAddress
+    correctDirectAddress,
+    mergeDirectAIPersistentOrder,
+    directAIContextRecoveryReply,
+    directAICommentReply,
+    shouldResetConversation
   };
 }
