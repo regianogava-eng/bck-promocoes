@@ -34,7 +34,7 @@ const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v4";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v5";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -826,6 +826,25 @@ async function handleBibiDirectAIMessage(message) {
   }
 
   if (data.awaitingCustomerConfirmation) {
+    const awaitingCorrection = applyDirectAICorrection(rawText, data);
+    if (awaitingCorrection.applied) {
+      const correctedData = normalizeDirectAIData({
+        ...data,
+        order: awaitingCorrection.order,
+        history: appendDirectHistory(data.history, rawText, "Corrigi o pedido."),
+        awaitingCustomerConfirmation: directAIOrderMissing(awaitingCorrection.order).length === 0
+      });
+      const correctedMissing = directAIOrderMissing(correctedData.order);
+      await saveConversationSession(message.from, directAISession(correctedData, "customer_correction"));
+      return {
+        replyText: correctedMissing.length === 0
+          ? directAICorrectionConfirmationReply(awaitingCorrection, correctedData.order, true)
+          : directAIMissingQuestion(correctedData.order, correctedMissing),
+        reason: "customer_correction",
+        state: AI_DIRECT_STATE
+      };
+    }
+
     if (isPositiveConfirmation(text)) {
       const zeroPriceIssue = directAIZeroPriceIssue(data.order);
       if (zeroPriceIssue) {
@@ -856,22 +875,6 @@ async function handleBibiDirectAIMessage(message) {
     }
   }
 
-  if (directAIOrderMissing(data.order).length === 0 && isDirectAIForwardConfirmation(text)) {
-    const zeroPriceIssue = directAIZeroPriceIssue(data.order);
-    if (zeroPriceIssue) {
-      await saveConversationSession(message.from, directAISession({
-        ...data,
-        awaitingCustomerConfirmation: false
-      }, "zero_price_blocked"));
-      return {
-        replyText: directAIZeroPriceReply(zeroPriceIssue),
-        reason: "zero_price_blocked",
-        state: AI_DIRECT_STATE
-      };
-    }
-    return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
-  }
-
   const correction = applyDirectAICorrection(rawText, data);
   if (correction.applied) {
     const correctedData = normalizeDirectAIData({
@@ -889,6 +892,22 @@ async function handleBibiDirectAIMessage(message) {
       reason: "customer_correction",
       state: AI_DIRECT_STATE
     };
+  }
+
+  if (directAIOrderMissing(data.order).length === 0 && isDirectAIForwardConfirmation(text)) {
+    const zeroPriceIssue = directAIZeroPriceIssue(data.order);
+    if (zeroPriceIssue) {
+      await saveConversationSession(message.from, directAISession({
+        ...data,
+        awaitingCustomerConfirmation: false
+      }, "zero_price_blocked"));
+      return {
+        replyText: directAIZeroPriceReply(zeroPriceIssue),
+        reason: "zero_price_blocked",
+        state: AI_DIRECT_STATE
+      };
+    }
+    return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
   }
 
   const aiResult = await createDirectAIReply(rawText, data);
@@ -1014,9 +1033,13 @@ function directAIInstructions() {
     "Para pizza, item completo exige sabor e numero exato de fatias.",
     "Se o cliente usar menor, pequena, broto, grande, gigante, familia, maracana, normal ou tamanho padrao, pergunte quantas fatias. Opcoes: 2, 4, 6, 8, 10, 12 ou 16.",
     "Se disser menor, ofereca 2, 4 ou 6 fatias e pergunte qual deseja.",
+    "Se o cliente perguntar tamanhos de pizza, responda que temos 2, 4, 6, 8, 10, 12 e 16 fatias.",
+    "Se o cliente pedir a maior que tiver, maior tamanho ou a maior pizza, isso significa 16 fatias. Se pedir a mais barata, significa 2 fatias.",
+    "Pizza meio a meio deve ser um unico item, nunca duas pizzas. Use nome no formato Pizza Meio a Meio: Sabor 1 / Sabor 2, mantenha as fatias totais e cobre pelo sabor de maior valor.",
     "Se o cliente disser que mudou de ideia, trocou ou quer ver outra categoria, descarte os itens anteriores e siga somente na nova categoria.",
-    "Se o cliente apenas corrigir entrega para retirada/salao ou mudar o numero de fatias da mesma pizza, mantenha o sabor anterior e atualize so esses campos.",
+    "Se o cliente apenas corrigir entrega para retirada/salao ou mudar o numero de fatias da mesma pizza, mantenha o item anterior e atualize so esses campos, recalculando o preco conforme entrega ou salao.",
     "Se o cliente disser tira/remover um item e coloca outro, remova somente o item citado e mantenha os itens validos que continuam no pedido.",
+    "Se o cliente apontar erro no resumo, como endereco ou numero da casa errado, nao encaminhe. Corrija, mostre novo resumo e pergunte de novo se pode encaminhar.",
     "Nunca salve 'quero menor', 'pizza', 'cartao' ou endereco como nome do cliente.",
     "Se o cliente corrigir nome com Ops, escrevi errado, corretor maluco, ou melhor, use apenas o nome corrigido e ignore essas expressoes.",
     "Se o cliente pedir cardapio, mostre uma lista curta e ofereca continuar por partes.",
@@ -1095,6 +1118,16 @@ function directAIFallbackReply(rawText = "", data = emptyDirectAIData()) {
   const order = normalizeDirectOrder(data.order);
   const text = normalize(rawText);
   const missing = directAIOrderMissing(order);
+
+  if (hasAny(text, ["tamanho", "tamanhos"]) && hasAny(text, ["pizza", "pizzas"])) {
+    return {
+      reply: "Temos pizzas de 2, 4, 6, 8, 10, 12 e 16 fatias. Qual sabor voce quer?",
+      order,
+      readyForTeam: false,
+      needsHuman: false,
+      confidence: 0.3
+    };
+  }
 
   if (hasAny(text, ["menor", "pequena", "broto"])) {
     return {
@@ -1201,12 +1234,13 @@ function normalizeDirectFulfillment(value = "") {
 
 function normalizeDirectItem(item = {}) {
   const quantity = Number(item.quantity || 1);
+  const slices = normalizeSlices(item.slices || item.fatias || item.size || item.notes || item.name || "");
   return {
     category: String(item.category || "").trim(),
     name: String(item.name || "").trim(),
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     size: String(item.size || "").trim(),
-    slices: normalizeSlices(item.slices || item.fatias || ""),
+    slices,
     price: String(item.price || "").trim(),
     extras: String(item.extras || "").trim(),
     notes: String(item.notes || "").trim()
@@ -1215,6 +1249,8 @@ function normalizeDirectItem(item = {}) {
 
 function normalizeSlices(value = "") {
   const text = normalize(String(value || ""));
+  if (hasAny(text, ["maior que tiver", "maior tamanho", "maior pizza", "a maior"])) return "16";
+  if (hasAny(text, ["mais barata", "menor preco", "menor preço"])) return "2";
   const match = text.match(/\b(2|4|6|8|10|12|16)\b/);
   return match ? match[1] : "";
 }
@@ -1225,6 +1261,17 @@ function directItemHasContent(item = {}) {
 
 function enrichDirectItemsWithMenuPrices(items = [], fulfillment = "") {
   return items.map((item) => {
+    const halfAndHalf = directHalfAndHalfPriceInfo(item, fulfillment);
+    if (halfAndHalf) {
+      return {
+        ...item,
+        category: "PIZZA",
+        name: `Pizza Meio a Meio: ${halfAndHalf.flavors.map((flavor) => flavor.nome).join(" / ")}`,
+        price: halfAndHalf.price,
+        notes: appendDirectItemNote(item.notes, `Meio a meio cobrado pelo maior valor: ${halfAndHalf.highestFlavor.nome}`)
+      };
+    }
+
     const menuItem = findDirectMenuItem(item);
     if (!menuItem) return item;
 
@@ -1327,11 +1374,11 @@ function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
   const requestedKind = directRequestedKindFromText(text);
   const slices = normalizeSlices(text);
   const fulfillment = normalizeDirectFulfillment(text) || order.fulfillment;
-  const samePizzaAdjustment = currentKind === "pizza"
-    && (!requestedKind || requestedKind === "pizza")
-    && (slices || fulfillment !== order.fulfillment);
+  const fulfillmentChanged = Boolean(fulfillment && fulfillment !== order.fulfillment);
+  const sameItemAdjustment = (!requestedKind || requestedKind === currentKind)
+    && (fulfillmentChanged || (currentKind === "pizza" && slices));
 
-  if (samePizzaAdjustment) {
+  if (sameItemAdjustment) {
     return {
       applied: true,
       data: normalizeDirectAIData({
@@ -1340,11 +1387,11 @@ function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
           ...order,
           fulfillment,
           address: fulfillment === "entrega" ? order.address : "",
-          items: order.items.map((item) => directItemKind(item) === "pizza"
+          items: order.items.map((item) => directItemKind(item) === "pizza" && slices
             ? {
               ...item,
-              slices: slices || item.slices,
-              size: slices ? `${slices} fatias` : item.size
+              slices,
+              size: `${slices} fatias`
             }
             : item)
         },
@@ -1458,9 +1505,94 @@ function directKindsMentionedInText(text = "") {
     });
 }
 
+function directHalfAndHalfPriceInfo(item = {}, fulfillment = "") {
+  const text = normalize([
+    item.category,
+    item.name,
+    item.size,
+    item.extras,
+    item.notes
+  ].filter(Boolean).join(" "));
+  const hasHalfSignal = hasAny(text, ["meio a meio", "meia", "metade", "meio/meio"])
+    || /[/|]/.test(String(item.name || item.extras || item.notes || ""));
+  if (directItemKind(item) !== "pizza" && !hasHalfSignal) return null;
+
+  const flavors = directPizzaMenuItems()
+    .filter((menuItem) => {
+      const name = normalize(menuItem.nome || "");
+      return name && text.includes(name);
+    })
+    .filter((menuItem, index, list) => list.findIndex((candidate) => candidate.nome === menuItem.nome) === index);
+
+  if (flavors.length < 2) return null;
+
+  const prices = flavors.map((flavor) => ({
+    flavor,
+    price: directMenuPriceForItem(flavor, item, fulfillment),
+    numeric: currencyToNumber(directMenuPriceForItem(flavor, item, fulfillment))
+  }));
+  const priced = prices.filter((entry) => entry.price);
+  if (priced.length < 2) return null;
+
+  const zero = priced.find((entry) => isZeroCurrency(entry.price));
+  if (zero) {
+    return {
+      flavors,
+      prices,
+      price: zero.price,
+      highestFlavor: zero.flavor,
+      zeroFlavor: zero.flavor
+    };
+  }
+
+  const highest = priced.reduce((best, entry) => entry.numeric > best.numeric ? entry : best, priced[0]);
+  return {
+    flavors,
+    prices,
+    price: highest.price,
+    highestFlavor: highest.flavor,
+    zeroFlavor: null
+  };
+}
+
+function directPizzaMenuItems() {
+  const categories = Array.isArray(AI_DIRECT_MENU_DATA?.categorias) ? AI_DIRECT_MENU_DATA.categorias : [];
+  return categories
+    .filter((category) => normalize(category.nome || "").includes("pizza"))
+    .flatMap((category) => Array.isArray(category.itens) ? category.itens : []);
+}
+
+function currencyToNumber(value = "") {
+  const normalized = String(value || "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function appendDirectItemNote(current = "", note = "") {
+  const currentText = String(current || "").trim();
+  const nextNote = String(note || "").trim();
+  if (!nextNote) return currentText;
+  if (normalize(currentText).includes(normalize(nextNote))) return currentText;
+  return [currentText, nextNote].filter(Boolean).join(" | ");
+}
+
 function directAIZeroPriceIssue(orderData = emptyDirectOrder()) {
   const order = normalizeDirectOrder(orderData);
   for (const item of order.items) {
+    const halfAndHalf = directHalfAndHalfPriceInfo(item, order.fulfillment);
+    if (halfAndHalf?.zeroFlavor) {
+      return {
+        item,
+        menuItem: halfAndHalf.zeroFlavor,
+        price: halfAndHalf.price,
+        order,
+        validItems: order.items.filter((candidate) => candidate !== item)
+      };
+    }
+
     const menuItem = findDirectMenuItem(item);
     if (!menuItem) continue;
     const price = directMenuPriceForItem(menuItem, item, order.fulfillment);
@@ -1572,6 +1704,7 @@ function isZeroCurrency(value = "") {
 
 function isDirectAIForwardConfirmation(text = "") {
   const value = normalize(text);
+  if (isDirectCorrectionText(value)) return false;
   if (isPositiveConfirmation(value)) return true;
   return [
     "pode",
@@ -1611,6 +1744,17 @@ function applyDirectAICorrection(rawText = "", data = emptyDirectAIData()) {
   const correctionText = extractDirectCorrectionValue(text);
   if (!correctionText) return { applied: false, order };
 
+  if (order.fulfillment === "entrega" && order.address && isDirectAddressCorrectionText(normalized)) {
+    return {
+      applied: true,
+      field: "address",
+      order: {
+        ...order,
+        address: correctDirectAddress(order.address, text)
+      }
+    };
+  }
+
   if (order.customerName && directAICorrectionLooksLikeName(correctionText)) {
     return {
       applied: true,
@@ -1638,9 +1782,15 @@ function isDirectCorrectionText(normalized = "") {
     || normalized.startsWith("digitei errado")
     || normalized.startsWith("corretor maluco")
     || normalized.startsWith("ou melhor")
+    || isDirectAddressCorrectionText(normalized)
     || normalized.includes(" meu nome e ")
     || normalized.includes(" meu nome eh ")
     || normalized.includes(" meu nome é ");
+}
+
+function isDirectAddressCorrectionText(normalized = "") {
+  return hasAny(normalized, ["endereco", "endereço", "numero", "número", "casa"])
+    && hasAny(normalized, ["errado", "certo", "correto", "nao e", "não é", "ficou errado"]);
 }
 
 function extractDirectCorrectionValue(text = "") {
@@ -1684,6 +1834,24 @@ function correctDirectCustomerName(currentName = "", correction = "") {
   return titleCaseName(next.join(" "));
 }
 
+function correctDirectAddress(currentAddress = "", correctionText = "") {
+  const current = String(currentAddress || "").trim();
+  const text = String(correctionText || "").trim();
+
+  const fullAddress = text.match(/(?:endereco|endere[cç]o)\s+(?:certo|correto).*?(?:e|eh|é)\s+(.+)$/i);
+  if (fullAddress?.[1]) return fullAddress[1].trim();
+
+  const numbers = text.match(/\b\d+[a-zA-Z]?\b/g) || [];
+  const newNumber = numbers[numbers.length - 1];
+  if (!newNumber) return current;
+
+  if (/\b\d+[a-zA-Z]?\b/.test(current)) {
+    return current.replace(/\b\d+[a-zA-Z]?\b/, newNumber);
+  }
+
+  return [current, newNumber].filter(Boolean).join(" ");
+}
+
 function titleCaseName(value = "") {
   return String(value || "")
     .trim()
@@ -1695,11 +1863,19 @@ function titleCaseName(value = "") {
 
 function directAICorrectionConfirmationReply(correction = {}, orderData = emptyDirectOrder(), alreadyAsked = false) {
   const order = normalizeDirectOrder(orderData);
-  if (alreadyAsked && correction.field === "customerName") {
-    return `Corrigi o nome para *${order.customerName}*. Posso encaminhar para a equipe conferir?`;
-  }
   if (alreadyAsked) {
-    return "Corrigi aqui. Posso encaminhar para a equipe conferir?";
+    const message = correction.field === "customerName"
+      ? `Corrigi o nome para *${order.customerName}*.`
+      : correction.field === "address"
+        ? `Corrigi o endereco para *${order.address}*.`
+        : "Corrigi aqui.";
+    return [
+      message,
+      "",
+      formatDirectAIOrderSummary(order),
+      "",
+      "Posso encaminhar para a equipe conferir?"
+    ].join("\n");
   }
   return directAIConfirmationQuestion(order);
 }
@@ -1804,6 +1980,14 @@ function formatDirectAIOrderSummary(orderData = emptyDirectOrder()) {
 function formatDirectAIItem(itemData = {}) {
   const item = normalizeDirectItem(itemData);
   const quantity = item.quantity && item.quantity !== 1 ? `${item.quantity}x ` : "1x ";
+  const halfAndHalf = directHalfAndHalfPriceInfo(item);
+  if (halfAndHalf) {
+    const slices = item.slices ? `${item.slices}f` : "pizza";
+    const flavors = halfAndHalf.flavors.map((flavor) => flavor.nome).join(" / ");
+    const price = item.price || halfAndHalf.price;
+    return `${quantity}Pizza ${slices} Meio a Meio: ${flavors}${price ? ` - valor informado: ${price}` : ""}`;
+  }
+
   const slices = item.slices ? `${item.slices} fatias` : item.size;
   const details = [
     item.name || item.category || "Item",
@@ -5936,6 +6120,10 @@ if (process.env.NODE_ENV === "test") {
     directAIZeroPriceReply,
     findDirectMenuItem,
     directMenuPriceForItem,
-    directItemKind
+    directItemKind,
+    directHalfAndHalfPriceInfo,
+    formatDirectAIItem,
+    formatDirectAIOrderSummary,
+    correctDirectAddress
   };
 }
