@@ -33,7 +33,7 @@ const AI_DIRECT_STATE = "AI_DIRECT";
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge();
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v1";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v2";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -835,6 +835,29 @@ async function handleBibiDirectAIMessage(message) {
     }
   }
 
+  if (directAIOrderMissing(data.order).length === 0 && isDirectAIForwardConfirmation(text)) {
+    return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
+  }
+
+  const correction = applyDirectAICorrection(rawText, data);
+  if (correction.applied) {
+    const correctedData = normalizeDirectAIData({
+      ...data,
+      order: correction.order,
+      history: appendDirectHistory(data.history, rawText, "Corrigi o pedido."),
+      awaitingCustomerConfirmation: directAIOrderMissing(correction.order).length === 0
+    });
+    const correctedMissing = directAIOrderMissing(correctedData.order);
+    await saveConversationSession(message.from, directAISession(correctedData, "customer_correction"));
+    return {
+      replyText: correctedMissing.length === 0
+        ? directAICorrectionConfirmationReply(correction, correctedData.order, data.awaitingCustomerConfirmation)
+        : directAIMissingQuestion(correctedData.order, correctedMissing),
+      reason: "customer_correction",
+      state: AI_DIRECT_STATE
+    };
+  }
+
   const aiResult = await createDirectAIReply(rawText, data);
   const nextData = normalizeDirectAIData({
     ...data,
@@ -857,7 +880,11 @@ async function handleBibiDirectAIMessage(message) {
     };
   }
 
-  if (aiResult.readyForTeam && missing.length === 0) {
+  if (missing.length === 0) {
+    if (isDirectAIForwardConfirmation(text)) {
+      return forwardDirectAIOrderToTeam(message, nextData.order, "customer_confirmed_ai_direct");
+    }
+
     const confirmData = {
       ...nextData,
       awaitingCustomerConfirmation: true
@@ -1197,6 +1224,107 @@ function directAIMissingQuestion(orderData = emptyDirectOrder(), missingList = [
   return "Perfeito. Me manda o detalhe que falta para eu fechar certinho.";
 }
 
+function isDirectAIForwardConfirmation(text = "") {
+  const value = normalize(text);
+  if (isPositiveConfirmation(value)) return true;
+  return [
+    "pode",
+    "pode sim",
+    "pode obrigado",
+    "pode encaminhar",
+    "pode enviar",
+    "encaminha",
+    "encaminhar",
+    "manda",
+    "manda pra equipe",
+    "manda para equipe",
+    "tudo certo",
+    "sim tudo certo",
+    "esta certo",
+    "ta certo"
+  ].some((answer) => value === normalize(answer) || value.includes(normalize(answer)));
+}
+
+function applyDirectAICorrection(rawText = "", data = emptyDirectAIData()) {
+  const text = String(rawText || "").trim();
+  const normalized = normalize(text);
+  const order = normalizeDirectOrder(data.order);
+
+  if (!normalized.startsWith("ops ") && !normalized.startsWith("opa ") && !normalized.startsWith("corrigindo ") && !normalized.startsWith("corrige ")) {
+    return { applied: false, order };
+  }
+
+  const correctionText = text
+    .replace(/^(ops|opa|corrigindo|corrige)\s+/i, "")
+    .trim();
+  if (!correctionText) return { applied: false, order };
+
+  if (order.customerName && directAICorrectionLooksLikeName(correctionText)) {
+    return {
+      applied: true,
+      field: "customerName",
+      order: {
+        ...order,
+        customerName: correctDirectCustomerName(order.customerName, correctionText)
+      }
+    };
+  }
+
+  return {
+    applied: true,
+    field: "notes",
+    order: {
+      ...order,
+      notes: [order.notes, `Correcao do cliente: ${correctionText}`].filter(Boolean).join(" | ")
+    }
+  };
+}
+
+function directAICorrectionLooksLikeName(value = "") {
+  const text = normalize(value);
+  if (!text || text.length > 40) return false;
+  if (hasFoodSignal(text) || hasPaymentSignal(text)) return false;
+  return /^[a-z\s.'-]+$/i.test(text);
+}
+
+function correctDirectCustomerName(currentName = "", correction = "") {
+  const currentParts = String(currentName || "")
+    .trim()
+    .split(/[\s.]+/)
+    .filter(Boolean);
+  const correctionParts = String(correction || "")
+    .trim()
+    .split(/[\s.]+/)
+    .filter(Boolean);
+
+  if (!correctionParts.length) return currentName;
+  if (!currentParts.length || correctionParts.length > 1) return titleCaseName(correctionParts.join(" "));
+
+  const next = [...currentParts];
+  next[next.length - 1] = correctionParts.join(" ");
+  return titleCaseName(next.join(" "));
+}
+
+function titleCaseName(value = "") {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function directAICorrectionConfirmationReply(correction = {}, orderData = emptyDirectOrder(), alreadyAsked = false) {
+  const order = normalizeDirectOrder(orderData);
+  if (alreadyAsked && correction.field === "customerName") {
+    return `Corrigi o nome para *${order.customerName}*. Posso encaminhar para a equipe conferir?`;
+  }
+  if (alreadyAsked) {
+    return "Corrigi aqui. Posso encaminhar para a equipe conferir?";
+  }
+  return directAIConfirmationQuestion(order);
+}
+
 function directAIConfirmationQuestion(orderData = emptyDirectOrder()) {
   return [
     "Fechei o resumo assim:",
@@ -1251,10 +1379,10 @@ async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(
 
   return {
     replyText: [
-      "Show de bola, encaminhei seu pedido para a equipe conferir antes de confirmar.",
+      "Perfeito! Pedido enviado para a equipe conferir com sucesso.",
       `Protocolo: ${orderRecord.id}`,
       "",
-      "A equipe vai conferir valor, disponibilidade e prazo. Depois te responde por aqui com a confirmacao."
+      "Agora e so aguardar a confirmacao por aqui."
     ].join("\n"),
     reason: "forwarded_to_team",
     state: next.state
@@ -5417,6 +5545,9 @@ if (process.env.NODE_ENV === "test") {
     handleBibiDirectAIMessage,
     directAIOrderMissing,
     normalizeDirectOrder,
-    directAIMissingQuestion
+    directAIMissingQuestion,
+    isDirectAIForwardConfirmation,
+    applyDirectAICorrection,
+    directAICorrectionConfirmationReply
   };
 }
