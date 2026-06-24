@@ -30,10 +30,11 @@ const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-min
 const AI_DIRECT_ENABLED = process.env.BCK_AI_DIRECT_ENABLED !== "false";
 const AI_DIRECT_MODEL = process.env.BCK_AI_DIRECT_MODEL || AI_INTERPRETER_MODEL;
 const AI_DIRECT_STATE = "AI_DIRECT";
-const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge();
+const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
+const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v2";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v3";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -792,7 +793,11 @@ async function handleBibiDirectAIMessage(message) {
     session = directAISession(emptyDirectAIData(), "start_ai_direct");
   }
 
-  const data = normalizeDirectAIData(session.data);
+  let data = normalizeDirectAIData(session.data);
+  const contextSwitch = applyDirectAIContextSwitch(rawText, data);
+  if (contextSwitch.applied) {
+    data = contextSwitch.data;
+  }
 
   if (isCancelRequest(text)) {
     await deleteConversationSession(message.from);
@@ -818,6 +823,18 @@ async function handleBibiDirectAIMessage(message) {
 
   if (data.awaitingCustomerConfirmation) {
     if (isPositiveConfirmation(text)) {
+      const zeroPriceIssue = directAIZeroPriceIssue(data.order);
+      if (zeroPriceIssue) {
+        await saveConversationSession(message.from, directAISession({
+          ...data,
+          awaitingCustomerConfirmation: false
+        }, "zero_price_blocked"));
+        return {
+          replyText: directAIZeroPriceReply(zeroPriceIssue),
+          reason: "zero_price_blocked",
+          state: AI_DIRECT_STATE
+        };
+      }
       return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
     }
 
@@ -836,6 +853,18 @@ async function handleBibiDirectAIMessage(message) {
   }
 
   if (directAIOrderMissing(data.order).length === 0 && isDirectAIForwardConfirmation(text)) {
+    const zeroPriceIssue = directAIZeroPriceIssue(data.order);
+    if (zeroPriceIssue) {
+      await saveConversationSession(message.from, directAISession({
+        ...data,
+        awaitingCustomerConfirmation: false
+      }, "zero_price_blocked"));
+      return {
+        replyText: directAIZeroPriceReply(zeroPriceIssue),
+        reason: "zero_price_blocked",
+        state: AI_DIRECT_STATE
+      };
+    }
     return forwardDirectAIOrderToTeam(message, data.order, "customer_confirmed_ai_direct");
   }
 
@@ -866,6 +895,16 @@ async function handleBibiDirectAIMessage(message) {
     awaitingCustomerConfirmation: false
   });
   const missing = directAIOrderMissing(nextData.order);
+  const zeroPriceIssue = directAIZeroPriceIssue(nextData.order);
+
+  if (zeroPriceIssue) {
+    await saveConversationSession(message.from, directAISession(nextData, "zero_price_blocked"));
+    return {
+      replyText: directAIZeroPriceReply(zeroPriceIssue),
+      reason: "zero_price_blocked",
+      state: AI_DIRECT_STATE
+    };
+  }
 
   if (aiResult.needsHuman) {
     const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
@@ -882,6 +921,15 @@ async function handleBibiDirectAIMessage(message) {
 
   if (missing.length === 0) {
     if (isDirectAIForwardConfirmation(text)) {
+      const forwardZeroPriceIssue = directAIZeroPriceIssue(nextData.order);
+      if (forwardZeroPriceIssue) {
+        await saveConversationSession(message.from, directAISession(nextData, "zero_price_blocked"));
+        return {
+          replyText: directAIZeroPriceReply(forwardZeroPriceIssue),
+          reason: "zero_price_blocked",
+          state: AI_DIRECT_STATE
+        };
+      }
       return forwardDirectAIOrderToTeam(message, nextData.order, "customer_confirmed_ai_direct");
     }
 
@@ -962,10 +1010,15 @@ function directAIInstructions() {
     "Para pizza, item completo exige sabor e numero exato de fatias.",
     "Se o cliente usar menor, pequena, broto, grande, gigante, familia, maracana, normal ou tamanho padrao, pergunte quantas fatias. Opcoes: 2, 4, 6, 8, 10, 12 ou 16.",
     "Se disser menor, ofereca 2, 4 ou 6 fatias e pergunte qual deseja.",
+    "Se o cliente disser que mudou de ideia, trocou ou quer ver outra categoria, descarte os itens anteriores e siga somente na nova categoria.",
     "Nunca salve 'quero menor', 'pizza', 'cartao' ou endereco como nome do cliente.",
+    "Se o cliente corrigir nome com Ops, escrevi errado, corretor maluco, ou melhor, use apenas o nome corrigido e ignore essas expressoes.",
     "Se o cliente pedir cardapio, mostre uma lista curta e ofereca continuar por partes.",
     "Use somente precos presentes no menuKnowledge. Se o preco for R$ 0,00, diga que a equipe precisa conferir.",
+    "Nunca feche pedido com item de R$ 0,00. Ofereca chamar a equipe do balcao.",
     "Nao invente taxa, prazo, disponibilidade, horario, regiao atendida, desconto ou brinde.",
+    "Se o cliente ja mandou varias informacoes em uma frase, preencha o que ja foi dito e pergunte somente o que falta.",
+    "Depois de enviar resumo e perguntar se pode encaminhar, se o cliente disser sim, pode, tudo certo ou pode encaminhar, nao repita resumo; apenas encaminhe.",
     "Quando o pedido estiver completo, readyForTeam deve ser true, mas ainda nao diga que esta confirmado.",
     "Pedido completo precisa ter item completo, nome, tipo entrega/retirada, endereco se entrega, pagamento e troco se dinheiro.",
     "Retorne sempre o pedido atualizado inteiro no JSON. Se nao souber um campo, use string vazia.",
@@ -1224,6 +1277,124 @@ function directAIMissingQuestion(orderData = emptyDirectOrder(), missingList = [
   return "Perfeito. Me manda o detalhe que falta para eu fechar certinho.";
 }
 
+function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
+  const text = normalize(rawText);
+  const order = normalizeDirectOrder(data.order);
+  if (!order.items.length) return { applied: false, data };
+
+  const switchIntent = hasAny(text, [
+    "mudei de ideia",
+    "mudei de idéia",
+    "quer saber",
+    "troquei de ideia",
+    "trocar de pedido",
+    "vou trocar",
+    "nao quero mais isso",
+    "não quero mais isso",
+    "em vez disso",
+    "ao inves disso",
+    "agora quero",
+    "quero ver as opcoes",
+    "quero ver as opções"
+  ]);
+
+  if (!switchIntent) return { applied: false, data };
+
+  return {
+    applied: true,
+    data: normalizeDirectAIData({
+      ...data,
+      order: {
+        ...order,
+        items: [],
+        notes: order.notes
+      },
+      awaitingCustomerConfirmation: false
+    })
+  };
+}
+
+function directAIZeroPriceIssue(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  for (const item of order.items) {
+    const menuItem = findDirectMenuItem(item);
+    if (!menuItem) continue;
+    const price = directMenuPriceForItem(menuItem, item, order.fulfillment);
+    if (isZeroCurrency(price)) {
+      return {
+        item,
+        menuItem,
+        price
+      };
+    }
+  }
+  return null;
+}
+
+function directAIZeroPriceReply(issue = {}) {
+  const itemName = issue.menuItem?.nome || issue.item?.name || "esse item";
+  return [
+    `Olha, o valor de *${itemName}* esta em atualizacao no sistema hoje.`,
+    "",
+    "Quer que eu chame o pessoal do balcao para fechar certinho com voce?"
+  ].join("\n");
+}
+
+function findDirectMenuItem(item = {}) {
+  const itemText = normalize([
+    item.category,
+    item.name,
+    item.size,
+    item.notes
+  ].filter(Boolean).join(" "));
+  if (!itemText) return null;
+
+  const categories = Array.isArray(AI_DIRECT_MENU_DATA?.categorias) ? AI_DIRECT_MENU_DATA.categorias : [];
+  let best = null;
+  let bestScore = 0;
+
+  for (const category of categories) {
+    const categoryName = normalize(category.nome || "");
+    const items = Array.isArray(category.itens) ? category.itens : [];
+    for (const menuItem of items) {
+      const name = normalize(menuItem.nome || "");
+      if (!name) continue;
+      let score = 0;
+      if (itemText.includes(name) || name.includes(itemText)) score += 5;
+      for (const token of name.split(/\s+/).filter((part) => part.length >= 4)) {
+        if (itemText.includes(token)) score += 1;
+      }
+      if (categoryName && itemText.includes(categoryName)) score += 2;
+      if (categoryName.includes("pizza doce") && itemText.includes("pizza") && itemText.includes("doce")) score += 4;
+      if (score > bestScore) {
+        best = menuItem;
+        bestScore = score;
+      }
+    }
+  }
+
+  return bestScore >= 3 ? best : null;
+}
+
+function directMenuPriceForItem(menuItem = {}, item = {}, fulfillment = "") {
+  const priceGroup = normalizeDirectFulfillment(fulfillment) === "entrega"
+    ? menuItem.entrega || menuItem.salao
+    : menuItem.salao || menuItem.entrega;
+
+  if (priceGroup && typeof priceGroup === "object") {
+    const slices = normalizeSlices(item.slices || item.size || item.notes || "");
+    if (slices && priceGroup[`${slices}f`]) return priceGroup[`${slices}f`];
+    return Object.values(priceGroup).find(Boolean) || "";
+  }
+
+  return priceGroup || "";
+}
+
+function isZeroCurrency(value = "") {
+  const text = normalize(String(value || ""));
+  return /^r\$\s*0(?:,00)?$/.test(text) || text === "0" || text === "0,00";
+}
+
 function isDirectAIForwardConfirmation(text = "") {
   const value = normalize(text);
   if (isPositiveConfirmation(value)) return true;
@@ -1250,13 +1421,11 @@ function applyDirectAICorrection(rawText = "", data = emptyDirectAIData()) {
   const normalized = normalize(text);
   const order = normalizeDirectOrder(data.order);
 
-  if (!normalized.startsWith("ops ") && !normalized.startsWith("opa ") && !normalized.startsWith("corrigindo ") && !normalized.startsWith("corrige ")) {
+  if (!isDirectCorrectionText(normalized)) {
     return { applied: false, order };
   }
 
-  const correctionText = text
-    .replace(/^(ops|opa|corrigindo|corrige)\s+/i, "")
-    .trim();
+  const correctionText = extractDirectCorrectionValue(text);
   if (!correctionText) return { applied: false, order };
 
   if (order.customerName && directAICorrectionLooksLikeName(correctionText)) {
@@ -1278,6 +1447,33 @@ function applyDirectAICorrection(rawText = "", data = emptyDirectAIData()) {
       notes: [order.notes, `Correcao do cliente: ${correctionText}`].filter(Boolean).join(" | ")
     }
   };
+}
+
+function isDirectCorrectionText(normalized = "") {
+  return /^(ops|opa|corrigindo|corrige|escrevi errado|digitei errado|corretor maluco|ou melhor)\b/.test(normalized)
+    || normalized.startsWith("escrevi errado")
+    || normalized.startsWith("digitei errado")
+    || normalized.startsWith("corretor maluco")
+    || normalized.startsWith("ou melhor")
+    || normalized.includes(" meu nome e ")
+    || normalized.includes(" meu nome eh ")
+    || normalized.includes(" meu nome é ");
+}
+
+function extractDirectCorrectionValue(text = "") {
+  let value = String(text || "")
+    .replace(/^(ops|opa|corrigindo|corrige|escrevi errado|digitei errado|corretor maluco|ou melhor)[,!\s]*/i, "")
+    .trim();
+
+  const nameMatch = value.match(/(?:meu\s+nome\s+(?:e|eh|é)|nome\s+(?:e|eh|é))\s+(.+)$/i);
+  if (nameMatch) value = nameMatch[1].trim();
+
+  value = value
+    .replace(/^(corretor\s+maluco|kkk+|haha+|rsrs+)[,!\s]*/i, "")
+    .replace(/^(meu\s+nome\s+(?:e|eh|é)|nome\s+(?:e|eh|é))\s+/i, "")
+    .trim();
+
+  return value;
 }
 
 function directAICorrectionLooksLikeName(value = "") {
@@ -1452,17 +1648,19 @@ function cleanDirectAIReply(value = "") {
     .slice(0, 1200);
 }
 
-function buildDirectAIMenuKnowledge() {
-  let menu;
+function loadDirectAIMenuData() {
   try {
-    menu = require("../../data/cardapio_bck_estruturado.json");
+    return require("../../data/cardapio_bck_estruturado.json");
   } catch (error) {
     console.warn("BCK_BIBI_AI_DIRECT_MENU_MISSING", JSON.stringify({
       message: error?.message || String(error)
     }));
-    return "Cardapio completo indisponivel no runtime. Nao invente precos.";
+    return null;
   }
+}
 
+function buildDirectAIMenuKnowledge(menu = null) {
+  if (!menu) return "Cardapio completo indisponivel no runtime. Nao invente precos.";
   const categories = Array.isArray(menu.categorias) ? menu.categorias : [];
   const lines = [
     "CARDAPIO BCK - use estes dados como fonte de verdade.",
@@ -5548,6 +5746,9 @@ if (process.env.NODE_ENV === "test") {
     directAIMissingQuestion,
     isDirectAIForwardConfirmation,
     applyDirectAICorrection,
-    directAICorrectionConfirmationReply
+    directAICorrectionConfirmationReply,
+    applyDirectAIContextSwitch,
+    directAIZeroPriceIssue,
+    directAIZeroPriceReply
   };
 }
