@@ -34,7 +34,7 @@ const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
 const CEP_LOOKUP_TIMEOUT_MS = Math.max(500, Number(process.env.BCK_CEP_LOOKUP_TIMEOUT_MS || 2500));
-const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v3";
+const BIBI_VERSION = "2026-06-24-ai-direct-whatsapp-v4";
 const TYPING_INDICATOR_ENABLED = process.env.BCK_TYPING_INDICATOR_ENABLED !== "false";
 const TYPING_DELAY_MS = Math.min(1800, Math.max(500, Number(process.env.BCK_TYPING_DELAY_MS || 1100)));
 const MAIN_ORDER_SITE_URL = (process.env.BCK_MAIN_ORDER_SITE_URL || "https://www.pizzariabck.com.br").replace(/\/$/, "");
@@ -798,6 +798,10 @@ async function handleBibiDirectAIMessage(message) {
   if (contextSwitch.applied) {
     data = contextSwitch.data;
   }
+  const removalRequest = applyDirectAIRemovalRequest(rawText, data);
+  if (removalRequest.applied) {
+    data = removalRequest.data;
+  }
 
   if (isCancelRequest(text)) {
     await deleteConversationSession(message.from);
@@ -1011,14 +1015,16 @@ function directAIInstructions() {
     "Se o cliente usar menor, pequena, broto, grande, gigante, familia, maracana, normal ou tamanho padrao, pergunte quantas fatias. Opcoes: 2, 4, 6, 8, 10, 12 ou 16.",
     "Se disser menor, ofereca 2, 4 ou 6 fatias e pergunte qual deseja.",
     "Se o cliente disser que mudou de ideia, trocou ou quer ver outra categoria, descarte os itens anteriores e siga somente na nova categoria.",
+    "Se o cliente apenas corrigir entrega para retirada/salao ou mudar o numero de fatias da mesma pizza, mantenha o sabor anterior e atualize so esses campos.",
+    "Se o cliente disser tira/remover um item e coloca outro, remova somente o item citado e mantenha os itens validos que continuam no pedido.",
     "Nunca salve 'quero menor', 'pizza', 'cartao' ou endereco como nome do cliente.",
     "Se o cliente corrigir nome com Ops, escrevi errado, corretor maluco, ou melhor, use apenas o nome corrigido e ignore essas expressoes.",
     "Se o cliente pedir cardapio, mostre uma lista curta e ofereca continuar por partes.",
     "Use somente precos presentes no menuKnowledge. Se o preco for R$ 0,00, diga que a equipe precisa conferir.",
-    "Nunca feche pedido com item de R$ 0,00. Ofereca chamar a equipe do balcao.",
+    "Nunca feche pedido com item de R$ 0,00. Se houver outros itens com preco, mantenha esses itens anotados e pergunte se tira/troca o item sem preco ou chama o balcao.",
     "Nao invente taxa, prazo, disponibilidade, horario, regiao atendida, desconto ou brinde.",
-    "Se o cliente ja mandou varias informacoes em uma frase, preencha o que ja foi dito e pergunte somente o que falta.",
-    "Depois de enviar resumo e perguntar se pode encaminhar, se o cliente disser sim, pode, tudo certo ou pode encaminhar, nao repita resumo; apenas encaminhe.",
+    "Se o cliente ja mandou varias informacoes em uma frase, preencha o que ja foi dito e pergunte somente o que falta, mesmo que nome, bairro/endereco e pagamento venham antes do item.",
+    "Depois de enviar resumo e perguntar se pode encaminhar, se o cliente disser sim, pode, tudo certo, pode encaminhar, com certeza, manda bala, manda sim ou estou com pressa, nao repita resumo; apenas encaminhe.",
     "Quando o pedido estiver completo, readyForTeam deve ser true, mas ainda nao diga que esta confirmado.",
     "Pedido completo precisa ter item completo, nome, tipo entrega/retirada, endereco se entrega, pagamento e troco se dinheiro.",
     "Retorne sempre o pedido atualizado inteiro no JSON. Se nao souber um campo, use string vazia.",
@@ -1181,6 +1187,7 @@ function normalizeDirectOrder(order = {}) {
 
   if (normalized.fulfillment !== "entrega") normalized.address = "";
   if (normalized.payment !== "dinheiro") normalized.changeFor = "";
+  normalized.items = enrichDirectItemsWithMenuPrices(normalized.items, normalized.fulfillment);
   return normalized;
 }
 
@@ -1214,6 +1221,22 @@ function normalizeSlices(value = "") {
 
 function directItemHasContent(item = {}) {
   return Boolean(item.name || item.category || item.size || item.slices || item.extras || item.notes);
+}
+
+function enrichDirectItemsWithMenuPrices(items = [], fulfillment = "") {
+  return items.map((item) => {
+    const menuItem = findDirectMenuItem(item);
+    if (!menuItem) return item;
+
+    const price = directMenuPriceForItem(menuItem, item, fulfillment);
+    if (!price) return item;
+
+    return {
+      ...item,
+      category: item.category || menuItem.categoria || "",
+      price
+    };
+  });
 }
 
 function appendDirectHistory(history = [], customer = "", bhibi = "") {
@@ -1300,6 +1323,36 @@ function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
 
   if (!switchIntent) return { applied: false, data };
 
+  const currentKind = directItemKind(order.items[0]);
+  const requestedKind = directRequestedKindFromText(text);
+  const slices = normalizeSlices(text);
+  const fulfillment = normalizeDirectFulfillment(text) || order.fulfillment;
+  const samePizzaAdjustment = currentKind === "pizza"
+    && (!requestedKind || requestedKind === "pizza")
+    && (slices || fulfillment !== order.fulfillment);
+
+  if (samePizzaAdjustment) {
+    return {
+      applied: true,
+      data: normalizeDirectAIData({
+        ...data,
+        order: {
+          ...order,
+          fulfillment,
+          address: fulfillment === "entrega" ? order.address : "",
+          items: order.items.map((item) => directItemKind(item) === "pizza"
+            ? {
+              ...item,
+              slices: slices || item.slices,
+              size: slices ? `${slices} fatias` : item.size
+            }
+            : item)
+        },
+        awaitingCustomerConfirmation: false
+      })
+    };
+  }
+
   return {
     applied: true,
     data: normalizeDirectAIData({
@@ -1314,6 +1367,97 @@ function applyDirectAIContextSwitch(rawText = "", data = emptyDirectAIData()) {
   };
 }
 
+function applyDirectAIRemovalRequest(rawText = "", data = emptyDirectAIData()) {
+  const text = normalize(rawText);
+  const order = normalizeDirectOrder(data.order);
+  if (!order.items.length) return { applied: false, data };
+  if (!hasAny(text, ["tira", "tirar", "remove", "remover", "retira", "retirar"])) {
+    return { applied: false, data };
+  }
+
+  const removalText = text.split(/\b(?:coloca|bota|poe|adiciona|inclui)\b/)[0] || text;
+  const removeKinds = directKindsMentionedInText(removalText);
+  const removeZeroPrice = hasAny(removalText, ["sem preco", "sem preço", "zerado", "r$ 0"]);
+  if (!removeKinds.length && !removeZeroPrice) return { applied: false, data };
+
+  const nextItems = order.items.filter((item) => {
+    if (removeKinds.includes(directItemKind(item))) return false;
+    if (removeZeroPrice) {
+      const menuItem = findDirectMenuItem(item);
+      const price = menuItem ? directMenuPriceForItem(menuItem, item, order.fulfillment) : item.price;
+      if (isZeroCurrency(price)) return false;
+    }
+    return true;
+  });
+
+  if (nextItems.length === order.items.length) return { applied: false, data };
+
+  return {
+    applied: true,
+    data: normalizeDirectAIData({
+      ...data,
+      order: {
+        ...order,
+        items: nextItems
+      },
+      awaitingCustomerConfirmation: false
+    })
+  };
+}
+
+function directItemKind(item = {}) {
+  const category = normalize(item.category || "");
+  if (category.includes("pizza")) return "pizza";
+  if (category.includes("burguer") || category.includes("burger") || category.includes("hamburguer")) return "burguer";
+  if (category.includes("frango")) return "frango";
+  if (category.includes("porcao") || category.includes("batata")) return "porcao";
+  if (category.includes("carne") || category.includes("tabua")) return "carne";
+  if (category.includes("bebida")) return "bebida";
+
+  const text = normalize([
+    item.category,
+    item.name,
+    item.size,
+    item.notes
+  ].filter(Boolean).join(" "));
+  return directRequestedKindFromText(text);
+}
+
+function directRequestedKindFromText(text = "") {
+  if (hasAny(text, ["pizza", "pizzas", "fatias", "pepperoni"])) {
+    return "pizza";
+  }
+  if (hasAny(text, ["hamburguer", "hambúrguer", "burguer", "burger"])) {
+    return "burguer";
+  }
+  if (hasAny(text, ["frango", "file", "filé", "coxinha", "asa"])) {
+    return "frango";
+  }
+  if (hasAny(text, ["batata", "porcao", "porção", "polenta", "salada"])) {
+    return "porcao";
+  }
+  if (hasAny(text, ["carne", "tabua", "tábua", "picanha", "alcatra"])) {
+    return "carne";
+  }
+  if (hasAny(text, ["bebida", "refrigerante", "refri", "agua", "água", "suco"])) {
+    return "bebida";
+  }
+  return "";
+}
+
+function directKindsMentionedInText(text = "") {
+  return ["pizza", "burguer", "frango", "porcao", "carne", "bebida"]
+    .filter((kind) => {
+      if (kind === "pizza") return directRequestedKindFromText(text) === "pizza";
+      if (kind === "burguer") return hasAny(text, ["hamburguer", "hambúrguer", "burguer", "burger"]);
+      if (kind === "frango") return hasAny(text, ["frango", "file", "filé", "coxinha", "asa"]);
+      if (kind === "porcao") return hasAny(text, ["batata", "porcao", "porção", "polenta", "salada"]);
+      if (kind === "carne") return hasAny(text, ["carne", "tabua", "tábua", "picanha", "alcatra"]);
+      if (kind === "bebida") return hasAny(text, ["bebida", "refrigerante", "refri", "agua", "água", "suco"]);
+      return false;
+    });
+}
+
 function directAIZeroPriceIssue(orderData = emptyDirectOrder()) {
   const order = normalizeDirectOrder(orderData);
   for (const item of order.items) {
@@ -1324,7 +1468,9 @@ function directAIZeroPriceIssue(orderData = emptyDirectOrder()) {
       return {
         item,
         menuItem,
-        price
+        price,
+        order,
+        validItems: order.items.filter((candidate) => candidate !== item)
       };
     }
   }
@@ -1333,6 +1479,26 @@ function directAIZeroPriceIssue(orderData = emptyDirectOrder()) {
 
 function directAIZeroPriceReply(issue = {}) {
   const itemName = issue.menuItem?.nome || issue.item?.name || "esse item";
+  const validLines = (issue.validItems || [])
+    .map((item) => {
+      const menuItem = findDirectMenuItem(item);
+      const price = menuItem ? directMenuPriceForItem(menuItem, item, issue.order?.fulfillment) : item.price;
+      if (!price || isZeroCurrency(price)) return "";
+      return `- ${formatDirectAIItem({ ...item, price })}`;
+    })
+    .filter(Boolean);
+
+  if (validLines.length) {
+    return [
+      "Anotei o que ja tem valor certinho:",
+      ...validLines,
+      "",
+      `Mas *${itemName}* esta sem preco no sistema hoje.`,
+      "",
+      "Quer tirar/trocar esse item ou prefere que eu chame o pessoal do balcao?"
+    ].join("\n");
+  }
+
   return [
     `Olha, o valor de *${itemName}* esta em atualizacao no sistema hoje.`,
     "",
@@ -1365,6 +1531,15 @@ function findDirectMenuItem(item = {}) {
         if (itemText.includes(token)) score += 1;
       }
       if (categoryName && itemText.includes(categoryName)) score += 2;
+      for (const token of categoryName.split(/\s+/).filter((part) => part.length >= 5)) {
+        if (itemText.includes(token)) score += 1;
+      }
+      const menuWeights = name.match(/\b\d+\s*(?:g|kg|ml|l)\b/g) || [];
+      for (const weight of menuWeights) {
+        if (itemText.includes(weight)) score += 3;
+      }
+      if (name.includes("frango") && itemText.includes("frango")) score += 1;
+      if (name.includes("burguer") && (itemText.includes("burguer") || itemText.includes("burger") || itemText.includes("hamburguer"))) score += 1;
       if (categoryName.includes("pizza doce") && itemText.includes("pizza") && itemText.includes("doce")) score += 4;
       if (score > bestScore) {
         best = menuItem;
@@ -1407,12 +1582,20 @@ function isDirectAIForwardConfirmation(text = "") {
     "encaminha",
     "encaminhar",
     "manda",
+    "manda sim",
+    "manda bala",
+    "manda ver",
     "manda pra equipe",
     "manda para equipe",
+    "com certeza",
+    "claro",
+    "fechou",
     "tudo certo",
     "sim tudo certo",
     "esta certo",
-    "ta certo"
+    "ta certo",
+    "to com pressa",
+    "tô com pressa"
   ].some((answer) => value === normalize(answer) || value.includes(normalize(answer)));
 }
 
@@ -5748,7 +5931,11 @@ if (process.env.NODE_ENV === "test") {
     applyDirectAICorrection,
     directAICorrectionConfirmationReply,
     applyDirectAIContextSwitch,
+    applyDirectAIRemovalRequest,
     directAIZeroPriceIssue,
-    directAIZeroPriceReply
+    directAIZeroPriceReply,
+    findDirectMenuItem,
+    directMenuPriceForItem,
+    directItemKind
   };
 }
