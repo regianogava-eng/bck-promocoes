@@ -30,6 +30,8 @@ const AI_INTERPRETER_MODEL = process.env.BCK_AI_INTERPRETER_MODEL || "gpt-4o-min
 const AI_DIRECT_ENABLED = process.env.BCK_AI_DIRECT_ENABLED !== "false";
 const AI_DIRECT_MODEL = process.env.BCK_AI_DIRECT_MODEL || AI_INTERPRETER_MODEL;
 const AI_DIRECT_STATE = "AI_DIRECT";
+const PIZZA_PROMO_CAMPAIGN_TAG = "PIZZA_10F_BORDA_REF12";
+const PIZZA_PROMO_COMMAND = "/pizza10f";
 const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
@@ -49,7 +51,8 @@ const STATES = {
   MENU: "MENU",
   COLLECTING: "COLETANDO_PEDIDO",
   CONFIRMING: "CONFIRMANDO_PEDIDO",
-  FORWARDED: "PEDIDO_ENCAMINHADO"
+  FORWARDED: "PEDIDO_ENCAMINHADO",
+  PIZZA_PROMO: "PROMO_PIZZA_10F"
 };
 const TRAVA_APOS_ENCAMINHAR = Math.max(1, Number(process.env.BCK_TRAVA_APOS_ENCAMINHAR || process.env.BCK_HUMAN_HANDOFF_MINUTES || 5));
 const TIMEOUT_COLETA = Math.max(5, Number(process.env.BCK_TIMEOUT_COLETA || process.env.BCK_ORDER_DRAFT_MINUTES || 20));
@@ -773,6 +776,15 @@ async function handleBibiDirectAIMessage(message) {
     };
   }
 
+  const pizzaPromoTrigger = isPizzaPromoCampaignTrigger(rawText);
+  if (pizzaPromoTrigger || session.state === STATES.PIZZA_PROMO) {
+    return handlePizzaPromoCampaignMessage(message, session, {
+      rawText,
+      text,
+      trigger: pizzaPromoTrigger
+    });
+  }
+
   if (shouldResetConversation(text) || isOrderStartRequest(text)) {
     session = directAISession(emptyDirectAIData(), "reset_or_new_order");
   }
@@ -1201,6 +1213,407 @@ function directAISession(data = emptyDirectAIData(), reason = "ai_direct") {
     expiresAt: addMinutes(now, TIMEOUT_COLETA),
     reason
   };
+}
+
+async function handlePizzaPromoCampaignMessage(message, session, context = {}) {
+  const rawText = String(context.rawText ?? message.text ?? "").trim();
+  const text = context.text || normalize(rawText);
+  const trigger = Boolean(context.trigger);
+  let data = trigger ? emptyPizzaPromoCampaignData() : normalizePizzaPromoCampaignData(session.data);
+
+  console.log("BCK_BIBI_PIZZA_PROMO_MESSAGE", JSON.stringify({
+    phone: maskPhone(message.from),
+    trigger,
+    awaitingConfirmation: data.awaitingCustomerConfirmation,
+    chars: rawText.length
+  }));
+
+  if (!trigger && (shouldResetConversation(text) || isCancelRequest(text))) {
+    await deleteConversationSession(message.from);
+    return {
+      replyText: "Sem problemas! Cancelei esse atendimento da promocao. Quando quiser, e so chamar a Bibi de novo.",
+      reason: "pizza_promo_cancelled",
+      state: STATES.MENU
+    };
+  }
+
+  if (!trigger && isHumanRequest(text)) {
+    const teamNotification = await notifyStoreHumanRequest(message.from, message.id);
+    const next = forwardedSession(directAIOrderToLegacyOrder(data.order), "human_requested_pizza_promo");
+    await saveConversationSession(message.from, next);
+    return {
+      replyText: teamNotification.ok
+        ? "Vou chamar alguem da nossa equipe no balcao para assumir aqui, um minutinho!"
+        : "Vou chamar alguem da nossa equipe para assumir aqui, um minutinho!",
+      reason: "human_requested_pizza_promo",
+      state: next.state
+    };
+  }
+
+  if (data.awaitingCustomerConfirmation) {
+    if (isPositiveConfirmation(text) || isDirectAIForwardConfirmation(text)) {
+      return forwardPizzaPromoCampaignOrderToTeam(message, data.order);
+    }
+
+    data = normalizePizzaPromoCampaignData({
+      ...data,
+      awaitingCustomerConfirmation: false
+    });
+
+    if (isChangeRequest(text)) {
+      await saveConversationSession(message.from, pizzaPromoCampaignSession(data, "pizza_promo_customer_wants_change"));
+      return {
+        replyText: "Claro. Me fala o que quer ajustar: sabor, nome, entrega/retirada, endereco ou pagamento.",
+        reason: "pizza_promo_customer_wants_change",
+        state: STATES.PIZZA_PROMO
+      };
+    }
+  }
+
+  if (!trigger) {
+    data = collectPizzaPromoCampaignData(data, rawText, text);
+  }
+
+  const missing = pizzaPromoCampaignMissing(data.order);
+  if (!missing.length) {
+    const confirmData = normalizePizzaPromoCampaignData({
+      ...data,
+      awaitingCustomerConfirmation: true
+    });
+    await saveConversationSession(message.from, pizzaPromoCampaignSession(confirmData, "pizza_promo_awaiting_confirmation"));
+    return {
+      replyText: pizzaPromoCampaignConfirmationQuestion(confirmData.order),
+      reason: "pizza_promo_awaiting_confirmation",
+      state: STATES.PIZZA_PROMO
+    };
+  }
+
+  await saveConversationSession(message.from, pizzaPromoCampaignSession(data, trigger ? "pizza_promo_started" : "pizza_promo_collecting"));
+  return {
+    replyText: pizzaPromoCampaignQuestion(data.order, missing, { intro: trigger }),
+    reason: trigger ? "pizza_promo_started" : "pizza_promo_collecting",
+    state: STATES.PIZZA_PROMO
+  };
+}
+
+function emptyPizzaPromoCampaignData() {
+  return {
+    order: normalizeDirectOrder({
+      notes: pizzaPromoCampaignNote()
+    }),
+    awaitingCustomerConfirmation: false
+  };
+}
+
+function normalizePizzaPromoCampaignData(data = {}) {
+  const order = normalizeDirectOrder(data.order || {});
+  return {
+    order: normalizeDirectOrder({
+      ...order,
+      notes: mergeDirectTextField(order.notes, pizzaPromoCampaignNote())
+    }),
+    awaitingCustomerConfirmation: Boolean(data.awaitingCustomerConfirmation)
+  };
+}
+
+function pizzaPromoCampaignSession(data = emptyPizzaPromoCampaignData(), reason = "pizza_promo") {
+  const now = new Date();
+  return {
+    state: STATES.PIZZA_PROMO,
+    data: normalizePizzaPromoCampaignData(data),
+    startedAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt: addMinutes(now, TIMEOUT_COLETA),
+    reason
+  };
+}
+
+function isPizzaPromoCampaignTrigger(rawText = "") {
+  const text = normalize(rawText);
+  return text.includes(normalize(PIZZA_PROMO_CAMPAIGN_TAG))
+    || text.includes(PIZZA_PROMO_COMMAND)
+    || hasAny(text, [
+      "promo pizza 10f",
+      "promocao pizza 10f",
+      "promocao da pizza 10 fatias",
+      "pizza 10 fatias com borda",
+      "pizza 10f borda refri"
+    ]);
+}
+
+function collectPizzaPromoCampaignData(data = emptyPizzaPromoCampaignData(), rawText = "", text = "") {
+  const current = normalizePizzaPromoCampaignData(data);
+  const order = normalizeDirectOrder(current.order);
+  const missing = pizzaPromoCampaignMissing(order);
+
+  if (missing.includes("sabor")) {
+    const flavor = extractPizzaPromoFlavor(rawText);
+    if (flavor) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: pizzaPromoOrderWithFlavor(order, flavor)
+      });
+    }
+    return current;
+  }
+
+  if (missing.includes("nome")) {
+    const name = extractPizzaPromoCustomerName(rawText);
+    if (name) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          customerName: name
+        }
+      });
+    }
+    return current;
+  }
+
+  if (missing.includes("tipo")) {
+    const fulfillment = normalizeDirectFulfillment(rawText);
+    if (fulfillment) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          fulfillment
+        }
+      });
+    }
+
+    if (looksLikeAddressForPizzaPromo(text)) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          fulfillment: "entrega",
+          address: rawText.trim()
+        }
+      });
+    }
+    return current;
+  }
+
+  if (missing.includes("endereco")) {
+    const address = rawText.trim();
+    if (address) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          address
+        }
+      });
+    }
+    return current;
+  }
+
+  if (missing.includes("pagamento")) {
+    const payment = parsePayment(text);
+    if (payment) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          payment
+        }
+      });
+    }
+    return current;
+  }
+
+  if (missing.includes("troco")) {
+    const changeFor = parseChangeAnswer(text, { allowNumericOnly: true });
+    if (changeFor) {
+      return normalizePizzaPromoCampaignData({
+        ...current,
+        order: {
+          ...order,
+          changeFor
+        }
+      });
+    }
+  }
+
+  return current;
+}
+
+function pizzaPromoCampaignMissing(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  const missing = [];
+  if (!pizzaPromoFlavor(order)) missing.push("sabor");
+  if (!order.customerName) missing.push("nome");
+  if (!order.fulfillment) missing.push("tipo");
+  if (order.fulfillment === "entrega" && !order.address) missing.push("endereco");
+  if (!order.payment) missing.push("pagamento");
+  if (order.payment === "dinheiro" && !order.changeFor) missing.push("troco");
+  return missing;
+}
+
+function pizzaPromoCampaignQuestion(orderData = emptyDirectOrder(), missingList = [], options = {}) {
+  const order = normalizeDirectOrder(orderData);
+  const missing = missingList.length ? missingList : pizzaPromoCampaignMissing(order);
+  const intro = options.intro
+    ? [
+      "Perfeito, vi que voce veio pela promocao da pizza.",
+      "Ela e: pizza 10 fatias com borda + refri 1,2L gratis."
+    ].join("\n")
+    : "";
+
+  let question = "";
+  if (missing.includes("sabor")) {
+    question = "Qual sabor voce quer para a pizza de 10 fatias?";
+  } else if (missing.includes("nome")) {
+    question = `Anotei: ${pizzaPromoItemLine(order)}.\nQual nome eu coloco no pedido?`;
+  } else if (missing.includes("tipo")) {
+    question = "Vai ser entrega ou retirada no balcao?";
+  } else if (missing.includes("endereco")) {
+    question = "Qual e o endereco completo com bairro?";
+  } else if (missing.includes("pagamento")) {
+    question = "Qual vai ser a forma de pagamento: Pix, cartao ou dinheiro?";
+  } else if (missing.includes("troco")) {
+    question = "Vai precisar de troco? Se sim, troco para quanto? Se nao, responda NAO.";
+  } else {
+    question = "Me manda o proximo detalhe para eu fechar a promocao certinho.";
+  }
+
+  return [intro, question].filter(Boolean).join("\n\n");
+}
+
+function pizzaPromoCampaignConfirmationQuestion(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return [
+    "Fechei a promocao assim:",
+    "",
+    formatPizzaPromoCampaignCustomerSummary(order),
+    "",
+    "Se estiver certo, responda SIM que eu encaminho para a equipe conferir."
+  ].join("\n");
+}
+
+async function forwardPizzaPromoCampaignOrderToTeam(message, orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder({
+    ...orderData,
+    notes: mergeDirectTextField(orderData.notes, pizzaPromoCampaignNote())
+  });
+  return forwardDirectAIOrderToTeam(message, order, "customer_confirmed_pizza_promo");
+}
+
+function pizzaPromoOrderWithFlavor(orderData = emptyDirectOrder(), flavor = "") {
+  const cleanFlavor = cleanPizzaPromoText(flavor);
+  const itemName = cleanFlavor.toLowerCase().startsWith("pizza")
+    ? cleanFlavor
+    : `Pizza ${cleanFlavor}`;
+
+  return normalizeDirectOrder({
+    ...orderData,
+    notes: mergeDirectTextField(orderData.notes, pizzaPromoCampaignNote()),
+    items: [{
+      category: "PIZZA",
+      name: itemName,
+      quantity: 1,
+      size: "10 fatias",
+      slices: "10",
+      price: "",
+      extras: "borda recheada + refri 1,2L gratis",
+      notes: pizzaPromoCampaignNote()
+    }]
+  });
+}
+
+function pizzaPromoFlavor(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  const item = order.items.find((candidate) => normalize(candidate.category || candidate.name).includes("pizza"));
+  if (!item) return "";
+  const name = normalize(item.name);
+  if (!name || name === "pizza" || name === "pizzas") return "";
+  return item.name;
+}
+
+function pizzaPromoItemLine(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return order.items.length
+    ? order.items.map(formatPizzaPromoItemForCustomer).join(" + ")
+    : "pizza 10 fatias com borda + refri 1,2L gratis";
+}
+
+function formatPizzaPromoCampaignCustomerSummary(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return [
+    order.customerName ? `Cliente: ${order.customerName}` : "",
+    order.fulfillment ? `Tipo: ${fulfillmentLabel(order.fulfillment)}` : "",
+    order.address ? `Endereco: ${order.address}` : "",
+    "",
+    "Pedido:",
+    ...order.items.map((item) => `- ${formatPizzaPromoItemForCustomer(item)}`),
+    "",
+    order.payment ? `Pagamento: ${paymentLabel(order.payment)}` : "",
+    order.payment === "dinheiro" && order.changeFor ? `Troco: ${order.changeFor}` : ""
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n").replace(/\n+$/g, "");
+}
+
+function formatPizzaPromoItemForCustomer(itemData = {}) {
+  const item = normalizeDirectItem(itemData);
+  const quantity = item.quantity && item.quantity !== 1 ? `${item.quantity}x ` : "1x ";
+  const details = [
+    item.name || "Pizza da promocao",
+    item.slices ? `${item.slices} fatias` : "10 fatias",
+    item.extras || "borda recheada + refri 1,2L gratis",
+    item.price ? `valor informado: ${item.price}` : ""
+  ].filter(Boolean).join(" - ");
+  return `${quantity}${details}`;
+}
+
+function pizzaPromoCampaignNote() {
+  return `Campanha ${PIZZA_PROMO_CAMPAIGN_TAG} (${PIZZA_PROMO_COMMAND})`;
+}
+
+function extractPizzaPromoFlavor(rawText = "") {
+  let value = String(rawText || "")
+    .replace(new RegExp(PIZZA_PROMO_CAMPAIGN_TAG, "ig"), " ")
+    .replace(new RegExp(PIZZA_PROMO_COMMAND.replace("/", "\\/"), "ig"), " ")
+    .replace(/quero|queria|vim pela|promocao|promo[cç][aã]o|promo|oferta/ig, " ")
+    .replace(/pizza|10\s*f(?:atias)?|10\s*fatias|borda(?:\s+recheada)?|refri(?:gerante)?(?:\s*1[,.]2l?)?|1[,.]2\s*l|gratis|gratuito/ig, " ")
+    .replace(/[|+,:;.!?]/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  value = value.replace(/^sabor\s+/i, "").trim();
+  if (!value || normalize(value).length < 3) return "";
+  if (hasAny(normalize(value), ["mais informacoes", "mais informacao", "informacoes", "pedido"])) return "";
+  return cleanPizzaPromoText(value);
+}
+
+function extractPizzaPromoCustomerName(rawText = "") {
+  const value = cleanPizzaPromoText(rawText);
+  const text = normalize(value);
+  if (!value || text.length < 2) return "";
+  if (normalizeDirectFulfillment(value) || parsePayment(text) || isHumanRequest(text) || isCancelRequest(text)) return "";
+  return value.slice(0, 80);
+}
+
+function cleanPizzaPromoText(value = "") {
+  return String(value || "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function looksLikeAddressForPizzaPromo(text = "") {
+  return hasAny(text, [
+    "rua",
+    "avenida",
+    "av ",
+    "bairro",
+    "numero",
+    "casa",
+    "apto",
+    "apartamento",
+    "condominio",
+    "ponto de referencia"
+  ]);
 }
 
 function emptyDirectAIData() {
@@ -4101,6 +4514,17 @@ function normalizeSession(session) {
     };
   }
 
+  if (session.state === STATES.PIZZA_PROMO) {
+    return {
+      state: STATES.PIZZA_PROMO,
+      data: normalizePizzaPromoCampaignData(session.data),
+      startedAt: session.startedAt || new Date().toISOString(),
+      updatedAt: session.updatedAt || new Date().toISOString(),
+      expiresAt: session.expiresAt || null,
+      reason: session.reason || "pizza_promo"
+    };
+  }
+
   const state = Object.values(STATES).includes(session.state) ? session.state : STATES.MENU;
   return {
     state,
@@ -4118,7 +4542,7 @@ function expireSessionIfNeeded(session) {
   const expiresAt = Date.parse(session.expiresAt);
   if (!Number.isFinite(expiresAt) || expiresAt > Date.now()) return session;
 
-  if (session.state === STATES.COLLECTING || session.state === STATES.CONFIRMING || session.state === STATES.FORWARDED || session.state === AI_DIRECT_STATE) {
+  if (session.state === STATES.COLLECTING || session.state === STATES.CONFIRMING || session.state === STATES.FORWARDED || session.state === AI_DIRECT_STATE || session.state === STATES.PIZZA_PROMO) {
     return {
       ...menuSession(),
       expiredNotice: session.state
@@ -6354,6 +6778,10 @@ if (process.env.NODE_ENV === "test") {
     mergeDirectAIPersistentOrder,
     directAIContextRecoveryReply,
     directAICommentReply,
-    shouldResetConversation
+    shouldResetConversation,
+    handlePizzaPromoCampaignMessage,
+    isPizzaPromoCampaignTrigger,
+    pizzaPromoCampaignMissing,
+    normalizePizzaPromoCampaignData
   };
 }
