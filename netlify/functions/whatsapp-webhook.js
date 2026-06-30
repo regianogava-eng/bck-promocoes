@@ -15,6 +15,7 @@ const JSON_HEADERS = {
 };
 
 const SITE_FALLBACK = "https://beerchicken-bck.netlify.app";
+const STORE_NOTIFY_NUMBER_DEFAULT = "5528999329677";
 const STORE_NAME = process.env.BCK_STORE_NAME || "BCK Beer Chicken";
 const CITY = process.env.BCK_CITY || "Cachoeiro";
 const MAPS_CITY = process.env.BCK_MAPS_CITY || "Cachoeiro de Itapemirim - ES";
@@ -143,7 +144,8 @@ exports.handler = async function handler(event) {
       return json(200, {
         ok: true,
         version: BIBI_VERSION,
-        storeNotifyNumber: normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677"),
+        storeNotifyNumber: storeNotifyNumber(),
+        pizzaPromoNotifyNumber: pizzaPromoNotifyNumber(),
         mainOrderSiteUrl: MAIN_ORDER_SITE_URL,
         miniSiteOpenDays: MINISITE_OPEN_DAYS_LABEL,
         miniSiteClosedToday: isMiniSiteClosedToday(),
@@ -349,7 +351,7 @@ async function handleAdminConfirmationCommand(message) {
   }
 
   const fromNumber = normalizeStoreNotifyNumber(message.from);
-  const storeNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
+  const storeNumber = storeNotifyNumber();
 
   if (!storeNumber || fromNumber !== storeNumber) {
     if (quickOk && !orderId) {
@@ -1514,7 +1516,10 @@ async function forwardPizzaPromoCampaignOrderToTeam(message, orderData = emptyDi
     ...orderData,
     notes: mergeDirectTextField(orderData.notes, pizzaPromoCampaignNote())
   });
-  return forwardDirectAIOrderToTeam(message, order, "customer_confirmed_pizza_promo");
+  return forwardDirectAIOrderToTeam(message, order, "customer_confirmed_pizza_promo", {
+    storeNotifyNumber: pizzaPromoNotifyNumber(),
+    storeNotificationType: "store_pizza_promo_order_review"
+  });
 }
 
 function pizzaPromoOrderWithFlavor(orderData = emptyDirectOrder(), flavor = "") {
@@ -2568,7 +2573,7 @@ function directAIConfirmationQuestion(orderData = emptyDirectOrder()) {
   ].join("\n");
 }
 
-async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(), reason = "ai_direct_complete") {
+async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(), reason = "ai_direct_complete", options = {}) {
   const order = normalizeDirectOrder(orderData);
   const legacyData = directAIOrderToLegacyOrder(order);
   const orderRecord = buildPhaseOneOrderRecord({
@@ -2588,7 +2593,10 @@ async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(
   orderRecord.rawSummary = formatDirectAIOrderSummary(order);
 
   const queueResult = await savePhaseOneOrder(orderRecord);
-  const storeNotification = await notifyStoreManualOrder(message.from, orderRecord.rawSummary, orderRecord, queueResult);
+  const storeNotification = await notifyStoreManualOrder(message.from, orderRecord.rawSummary, orderRecord, queueResult, {
+    to: options.storeNotifyNumber,
+    type: options.storeNotificationType
+  });
   const next = forwardedSession(legacyData, reason);
   await saveConversationSession(message.from, next);
 
@@ -3538,7 +3546,7 @@ function manualOrderReceivedReply(orderText) {
 }
 
 function humanReply(notified = true) {
-  const officialNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const officialNumber = storeNotifyNumber();
   const lines = [
     notified
       ? "Certo. Avisei a equipe responsavel para acompanhar sua conversa."
@@ -3555,7 +3563,7 @@ function humanReply(notified = true) {
 }
 
 function officialStoreWhatsAppLink(message = "") {
-  const officialNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const officialNumber = storeNotifyNumber();
   const text = String(message || "").trim();
   return text
     ? `https://wa.me/${officialNumber}?text=${encodeURIComponent(text)}`
@@ -3835,8 +3843,8 @@ function safeJsonDetail(detail) {
   }
 }
 
-async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = null, queueResult = null) {
-  const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
+async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = null, queueResult = null, options = {}) {
+  const to = normalizeStoreNotifyNumber(options.to) || storeNotifyNumber();
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
@@ -3844,7 +3852,7 @@ async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = nu
   const body = formatManualOrderNotification(customerPhone, orderText, orderRecord, queueResult);
   const sent = await sendTextMessage(to, body);
   const notificationLog = await saveStoreNotificationLog({
-    type: "store_order_review",
+    type: options.type || "store_order_review",
     to,
     customerPhone,
     orderId: orderRecord?.id || "",
@@ -3856,7 +3864,7 @@ async function notifyStoreManualOrder(customerPhone, orderText, orderRecord = nu
 }
 
 async function notifyStoreHumanRequest(customerPhone, sourceMessageId = "") {
-  const to = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677");
+  const to = storeNotifyNumber();
   if (!to) {
     return { ok: false, error: "store_notify_number_missing" };
   }
@@ -3882,6 +3890,18 @@ function normalizeStoreNotifyNumber(value = "") {
   if (digits.length === 11) return `55${digits}`;
   if (digits.length === 9) return `5528${digits}`;
   return digits;
+}
+
+function storeNotifyNumber() {
+  return normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || STORE_NOTIFY_NUMBER_DEFAULT);
+}
+
+function pizzaPromoNotifyNumber() {
+  return normalizeStoreNotifyNumber(
+    process.env.BCK_BIBI_PIZZA_PROMO_NOTIFY_NUMBER
+      || process.env.BCK_STORE_NOTIFY_NUMBER
+      || STORE_NOTIFY_NUMBER_DEFAULT
+  );
 }
 
 function formatHumanRequestNotification(customerPhone) {
@@ -4127,7 +4147,7 @@ async function saveStoreNotificationStatus(status = {}) {
 
 function shouldNotifyCustomerOfStoreFailure(record = {}) {
   if (record.status !== "failed") return false;
-  if (record.type !== "store_order_review") return false;
+  if (!["store_order_review", "store_pizza_promo_order_review"].includes(record.type)) return false;
   if (!record.customerPhone || !record.orderId) return false;
   if (record.customerFallback?.attemptedAt) return false;
 
@@ -4137,7 +4157,7 @@ function shouldNotifyCustomerOfStoreFailure(record = {}) {
 
 async function notifyCustomerOfStoreDeliveryFailure({ store, messageKey, record }) {
   const now = new Date().toISOString();
-  const storeNumber = normalizeStoreNotifyNumber(process.env.BCK_STORE_NOTIFY_NUMBER || "5528999329677") || "5528999329677";
+  const storeNumber = storeNotifyNumber();
   const message = [
     "Aviso importante: seu pedido foi salvo, mas o aviso automatico para a equipe falhou agora.",
     `Protocolo: ${record.orderId}`,
