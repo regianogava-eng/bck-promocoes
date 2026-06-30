@@ -32,6 +32,7 @@ const AI_DIRECT_MODEL = process.env.BCK_AI_DIRECT_MODEL || AI_INTERPRETER_MODEL;
 const AI_DIRECT_STATE = "AI_DIRECT";
 const PIZZA_PROMO_CAMPAIGN_TAG = "PIZZA_10F_BORDA_REF12";
 const PIZZA_PROMO_COMMAND = "/pizza10f";
+const PIZZA_PROMO_PRICE = "R$ 94,90";
 const AI_DIRECT_MENU_DATA = loadDirectAIMenuData();
 const AI_DIRECT_MENU_KNOWLEDGE = buildDirectAIMenuKnowledge(AI_DIRECT_MENU_DATA);
 const CEP_LOOKUP_ENABLED = process.env.BCK_CEP_LOOKUP_ENABLED !== "false";
@@ -1308,7 +1309,7 @@ function emptyPizzaPromoCampaignData() {
 function normalizePizzaPromoCampaignData(data = {}) {
   const order = normalizeDirectOrder(data.order || {});
   return {
-    order: normalizeDirectOrder({
+    order: applyPizzaPromoCampaignPriceToOrder({
       ...order,
       notes: mergeDirectTextField(order.notes, pizzaPromoCampaignNote())
     }),
@@ -1326,6 +1327,21 @@ function pizzaPromoCampaignSession(data = emptyPizzaPromoCampaignData(), reason 
     expiresAt: addMinutes(now, TIMEOUT_COLETA),
     reason
   };
+}
+
+function applyPizzaPromoCampaignPriceToOrder(orderData = emptyDirectOrder()) {
+  const order = normalizeDirectOrder(orderData);
+  return normalizeDirectOrder({
+    ...order,
+    notes: mergeDirectTextField(order.notes, pizzaPromoCampaignNote()),
+    items: order.items.map((item) => isPizzaPromoCampaignItem(item)
+      ? {
+        ...item,
+        price: PIZZA_PROMO_PRICE,
+        notes: mergeDirectTextField(item.notes, pizzaPromoCampaignNote())
+      }
+      : item)
+  });
 }
 
 function isPizzaPromoCampaignTrigger(rawText = "") {
@@ -1494,7 +1510,7 @@ function pizzaPromoCampaignConfirmationQuestion(orderData = emptyDirectOrder()) 
 }
 
 async function forwardPizzaPromoCampaignOrderToTeam(message, orderData = emptyDirectOrder()) {
-  const order = normalizeDirectOrder({
+  const order = applyPizzaPromoCampaignPriceToOrder({
     ...orderData,
     notes: mergeDirectTextField(orderData.notes, pizzaPromoCampaignNote())
   });
@@ -1516,7 +1532,7 @@ function pizzaPromoOrderWithFlavor(orderData = emptyDirectOrder(), flavor = "") 
       quantity: 1,
       size: "10 fatias",
       slices: "10",
-      price: "",
+      price: PIZZA_PROMO_PRICE,
       extras: "borda recheada + refri 1,2L gratis",
       notes: pizzaPromoCampaignNote()
     }]
@@ -1557,17 +1573,38 @@ function formatPizzaPromoCampaignCustomerSummary(orderData = emptyDirectOrder())
 function formatPizzaPromoItemForCustomer(itemData = {}) {
   const item = normalizeDirectItem(itemData);
   const quantity = item.quantity && item.quantity !== 1 ? `${item.quantity}x ` : "1x ";
+  const price = item.price || PIZZA_PROMO_PRICE;
   const details = [
     item.name || "Pizza da promocao",
     item.slices ? `${item.slices} fatias` : "10 fatias",
     item.extras || "borda recheada + refri 1,2L gratis",
-    item.price ? `valor informado: ${item.price}` : ""
+    price ? `valor informado: ${price}` : ""
   ].filter(Boolean).join(" - ");
   return `${quantity}${details}`;
 }
 
 function pizzaPromoCampaignNote() {
   return `Campanha ${PIZZA_PROMO_CAMPAIGN_TAG} (${PIZZA_PROMO_COMMAND})`;
+}
+
+function isPizzaPromoCampaignItem(item = {}) {
+  const raw = [
+    item.category,
+    item.name,
+    item.size,
+    item.slices,
+    item.extras,
+    item.notes
+  ].filter(Boolean).join(" ");
+  const text = normalize(raw);
+  return text.includes(normalize(PIZZA_PROMO_CAMPAIGN_TAG))
+    || String(raw || "").toLowerCase().includes(PIZZA_PROMO_COMMAND)
+    || (
+      hasAny(text, ["borda recheada", "borda"])
+      && hasAny(text, ["refri", "refrigerante"])
+      && hasAny(text, ["gratis", "gratuito"])
+      && hasAny(text, ["10 fatias", "10"])
+    );
 }
 
 function extractPizzaPromoFlavor(rawText = "") {
@@ -1707,6 +1744,14 @@ function directItemHasContent(item = {}) {
 
 function enrichDirectItemsWithMenuPrices(items = [], fulfillment = "") {
   return items.map((item) => {
+    if (isPizzaPromoCampaignItem(item)) {
+      return {
+        ...item,
+        price: PIZZA_PROMO_PRICE,
+        notes: mergeDirectTextField(item.notes, pizzaPromoCampaignNote())
+      };
+    }
+
     const halfAndHalf = directHalfAndHalfPriceInfo(item, fulfillment);
     if (halfAndHalf) {
       return {
