@@ -2620,10 +2620,11 @@ async function forwardDirectAIOrderToTeam(message, orderData = emptyDirectOrder(
 
   return {
     replyText: [
-      "Perfeito! Pedido enviado para a equipe conferir com sucesso.",
+      "Perfeito! Recebi seu pedido e disparei o aviso para a equipe conferir.",
       `Protocolo: ${orderRecord.id}`,
       "",
-      "Agora e so aguardar a confirmacao por aqui."
+      "Agora e so aguardar a confirmacao por aqui.",
+      "Se o WhatsApp nao conseguir entregar esse aviso para a equipe, eu te aviso em seguida."
     ].join("\n"),
     reason: "forwarded_to_team",
     state: next.state
@@ -3039,13 +3040,14 @@ async function forwardCompletedOrder(message, session, reason) {
   }
 
   return withSession(next, [
-    "Show de bola, recebi seu pedido e ja encaminhei para a equipe conferir antes de confirmar.",
+    "Show de bola, recebi seu pedido e disparei o aviso para a equipe conferir antes de confirmar.",
     `Protocolo: ${orderRecord.id}`,
     "",
     summary,
     freeDeliveryLine(),
     "",
-    "A equipe vai conferir valor, disponibilidade e prazo. Depois te responde por aqui com a confirmacao."
+    "A equipe vai conferir valor, disponibilidade e prazo. Depois te responde por aqui com a confirmacao.",
+    "Se o WhatsApp nao conseguir entregar esse aviso para a equipe, eu te aviso em seguida."
   ].join("\n"));
 }
 
