@@ -24,6 +24,7 @@ const AI_ASSISTANT_NAME = process.env.BCK_AI_ASSISTANT_NAME || "Bibi";
 const AI_ASSISTANT_KEYWORD = normalize(process.env.BCK_AI_ASSISTANT_KEYWORD || "BIBI");
 const SESSION_STORE = "bck-whatsapp-sessions";
 const BIBI_ORDERS_STORE = "bck-bibi-orders";
+const BIBI_CONTACTS_STORE = "bck-bibi-contacts";
 const BIBI_NOTIFY_LOG_STORE = "bck-bibi-notification-logs";
 const BIBI_PENDING_ORDER_STATUS = "aguardando_aprovacao_humana";
 const AI_INTERPRETER_ENABLED = process.env.BCK_AI_INTERPRETER_ENABLED === "true";
@@ -188,6 +189,8 @@ exports.handler = async function handler(event) {
   const replies = [];
 
   for (const message of messages) {
+    await saveBibiInboundContact(message);
+
     const adminCommand = await handleAdminConfirmationCommand(message);
     if (adminCommand.handled) {
       if (!adminCommand.replyText) {
@@ -287,13 +290,19 @@ function extractMessages(payload) {
     const changes = Array.isArray(entry.changes) ? entry.changes : [];
     for (const change of changes) {
       const value = change.value || {};
+      const contactsByPhone = new Map((Array.isArray(value.contacts) ? value.contacts : [])
+        .map((contact) => [onlyDigits(contact.wa_id), String(contact.profile?.name || "").trim()])
+        .filter(([phone]) => phone));
       const incoming = Array.isArray(value.messages) ? value.messages : [];
       for (const item of incoming) {
+        const phone = onlyDigits(item.from);
         messages.push({
           id: item.id,
           from: item.from,
           type: item.type,
           text: messageText(item),
+          timestamp: item.timestamp || "",
+          profileName: contactsByPhone.get(phone) || "",
           raw: item
         });
       }
@@ -301,6 +310,49 @@ function extractMessages(payload) {
   }
 
   return messages.filter((message) => message.from && message.text);
+}
+
+async function saveBibiInboundContact(message = {}) {
+  const phone = onlyDigits(message.from);
+  if (!phone) return { ok: false, error: "phone_missing" };
+
+  const key = `contacts/${phone}`;
+  const now = new Date().toISOString();
+  const incomingAt = metaTimestampToIso(message.timestamp) || now;
+
+  try {
+    const store = await getBlobStore(BIBI_CONTACTS_STORE);
+    const existing = await store.get(key, { consistency: "strong", type: "json" });
+    const record = {
+      phone,
+      waLink: customerWhatsAppLink(phone),
+      profileName: String(message.profileName || existing?.profileName || "").trim(),
+      firstSeenAt: existing?.firstSeenAt || incomingAt,
+      lastSeenAt: incomingAt,
+      lastMessageId: message.id || "",
+      lastMessageType: message.type || "",
+      lastCampaignTag: isPizzaPromoCampaignTrigger(message.text) ? PIZZA_PROMO_CAMPAIGN_TAG : existing?.lastCampaignTag || "",
+      source: "bibi-whatsapp-webhook",
+      updatedAt: now
+    };
+
+    await store.setJSON(key, record, {
+      metadata: {
+        phone,
+        profileName: record.profileName,
+        lastSeenAt: record.lastSeenAt,
+        lastCampaignTag: record.lastCampaignTag
+      }
+    });
+
+    return { ok: true, key };
+  } catch (error) {
+    console.error("BCK_BIBI_CONTACT_SAVE_FAILED", JSON.stringify({
+      phone: maskPhone(phone),
+      message: error?.message || String(error)
+    }));
+    return { ok: false, key, error: error?.message || String(error) };
+  }
 }
 
 function extractMessageStatuses(payload) {
@@ -3572,6 +3624,11 @@ function officialStoreWhatsAppLink(message = "") {
     : `https://wa.me/${officialNumber}`;
 }
 
+function customerWhatsAppLink(customerPhone = "") {
+  const phone = onlyDigits(customerPhone);
+  return phone ? `https://wa.me/${phone}` : "";
+}
+
 function repeatOrderReply(siteUrl) {
   return [
     "Consigo te ajudar, mas eu ainda nao puxo automaticamente o pedido anterior.",
@@ -3908,20 +3965,25 @@ function pizzaPromoNotifyNumber() {
 
 function formatHumanRequestNotification(customerPhone) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const customerPhoneDigits = onlyDigits(customerPhone);
+  const customerLink = customerWhatsAppLink(customerPhoneDigits);
 
   return [
     "ATENDIMENTO SOLICITADO VIA BIBI",
     "",
-    `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
+    `Cliente WhatsApp: +${customerPhoneDigits}`,
+    customerLink ? `Chamar cliente: ${customerLink}` : "",
     `Recebido: ${receivedAt}`,
     "",
     "O cliente escolheu a opcao 5 - Falar com a equipe.",
     "Acompanhe a conversa da Bibi/Cloud API ou chame o cliente pelo telefone acima."
-  ].join("\n");
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
 }
 
 function formatManualOrderNotification(customerPhone, orderText, orderRecord = null, queueResult = null) {
   const receivedAt = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const customerPhoneDigits = onlyDigits(customerPhone);
+  const customerLink = customerWhatsAppLink(customerPhoneDigits);
   const warnings = orderRecord?.review?.warnings || [];
   const mapLinks = orderMapLinks(orderText);
   const queueWarning = queueResult && !queueResult.ok
@@ -3934,7 +3996,8 @@ function formatManualOrderNotification(customerPhone, orderText, orderRecord = n
     orderRecord?.id ? `Protocolo: ${orderRecord.id}` : "",
     `Status: ${orderRecord?.status || BIBI_PENDING_ORDER_STATUS}`,
     "",
-    `Cliente WhatsApp: +${onlyDigits(customerPhone)}`,
+    `Cliente WhatsApp: +${customerPhoneDigits}`,
+    customerLink ? `Chamar cliente: ${customerLink}` : "",
     `Recebido: ${receivedAt}`,
     "",
     "PEDIDO MONTADO PELA BIBI:",
