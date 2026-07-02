@@ -15,6 +15,11 @@
   to = "/.netlify/functions/pdv-order-status"
   status = 200
 
+[[redirects]]
+  from = "/api/bibi/conversas"
+  to = "/.netlify/functions/bibi-conversations"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
